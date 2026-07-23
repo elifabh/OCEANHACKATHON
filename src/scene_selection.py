@@ -4,33 +4,32 @@ Step 1 of the kelp detection feasibility test.
 
 PURPOSE
 -------
-Rank archived Sentinel-2 L1C scenes over a West Cork AOI by their suitability for
-SUBTIDAL benthic mapping. Suitability here is dominated by three things:
+Rank archived Sentinel-2 L1C scenes over West Cork AOIs by their suitability for
+SUBTIDAL benthic mapping. Suitability is dominated by three things:
 
   1. AOI-LOCAL cloud cover. CLOUDY_PIXEL_PERCENTAGE is a granule-level property
      (110 x 110 km) and is far too strict as a scene filter for a ~5 km bay.
-     We therefore use a loose scene filter and compute per-pixel clear fraction
-     over the AOI from Cloud Score+ (Pasquarella et al. 2023).
-  2. TIDAL HEIGHT at acquisition time. Bottom signal falls off roughly as
-     exp(-Kd * z * pathfactor); a 3 m spring range over a 4 m bed is a large
-     multiplicative change in the retrievable signal. Observed water level comes
+     We use a loose scene filter and compute the clear-pixel fraction over the
+     AOI from Cloud Score+.
+  2. TIDAL HEIGHT at acquisition. Bottom signal falls off roughly as
+     exp(-Kd * z * pathfactor); a ~3 m spring range over a 4 m bed is a large
+     multiplicative change in retrievable signal. Observed water level comes
      from the Irish National Tide Gauge Network (Marine Institute, CC-BY 4.0).
-  3. SEASON. Solar elevation at the ~11:54 UTC overpass ranges from ~15 deg
-     (Dec) to ~61 deg (Jun) at 51.5 N. Incident irradiance varies by ~4x; the
-     in-water path length varies by only ~18%. So the seasonal driver is
-     available light, not geometry. May-August scenes are strongly preferred.
+  3. SEASON. At 51.5 N the ~11:54 UTC overpass gives a solar elevation of ~61
+     deg in June and ~15 deg in December. Incident irradiance varies ~4x while
+     the in-water path length varies only ~18%, so the seasonal driver is
+     available light, not geometry. May-August is strongly preferred.
 
 WHAT THIS SCRIPT DOES NOT DO
 ----------------------------
-It does not detect kelp, and it does not prove kelp is detectable. It only
-produces a shortlist of scenes worth putting through ACOLITE. Detection
-feasibility is the NEXT step and is still unproven for Irish subtidal
-L. hyperborea.
+It does not detect kelp and does not prove kelp is detectable. It produces a
+shortlist of scenes worth putting through ACOLITE. Detection feasibility is the
+next step and is still unproven for Irish subtidal Laminaria hyperborea.
 
 REQUIREMENTS
 ------------
 earthengine-api, pandas, requests   (record versions in DEPENDENCIES.md)
-An authenticated Earth Engine session: `earthengine authenticate`
+Authenticated Earth Engine session.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ import requests
 # --------------------------------------------------------------------------
 # CONFIG
 # --------------------------------------------------------------------------
-EE_PROJECT = "gen-lang-client-0871366385"  # <-- real project ID, not the display name "kelp-ee"
+EE_PROJECT = "gen-lang-client-0871366385"  # real project ID, not the display name "kelp-ee"
 
 # Candidate AOIs. Keep them small (a few km) -- water optical properties vary
 # over short distances, so a per-bay AOI is the right unit, not the MGRS tile.
@@ -62,20 +61,27 @@ AOIS = {
 }
 
 START, END = "2018-01-01", "2025-12-31"
-MAX_SCENE_CLOUD = 80          # deliberately loose; real filtering is done per-pixel
+MAX_SCENE_CLOUD = 80          # deliberately loose; real filtering is per-pixel
 MIN_AOI_CLEAR_FRAC = 0.90     # fraction of AOI pixels that must be clear
-CS_PLUS_THRESHOLD = 0.60      # Cloud Score+ 'cs_cdf' value above which a pixel is clear
+CS_PLUS_THRESHOLD = 0.60      # Cloud Score+ 'cs_cdf' above which a pixel is clear
 PREFERRED_MONTHS = (5, 6, 7, 8)
 
-# Nearest Irish National Tide Gauge Network station to West Cork.
-# Castletownbere Port: 51.649730 N, -9.903538 W. Mean spring range 3.012 m.
-# CAVEAT: ~50 km from Roaringwater Bay, so tidal PHASE differs. Treat the value
-# as indicative for ranking, and verify the final 3-5 scenes against a local
-# prediction before drawing conclusions.
+# Irish National Tide Gauge Network stations, names copied verbatim from ERDDAP.
+# Union Hall Harbor is ~15-20 km from Baltimore (best for the primary AOI) but
+# its record only starts 2020-11. Castletownbere Port covers 2018 onward and has
+# documented site metadata (MSL, LAT, benchmark, 3.012 m mean spring range) but
+# is ~50 km away, so its tidal PHASE differs. Both are fetched; ranking uses the
+# primary. Verify the final 3-5 scenes against a local prediction before use.
 ERDDAP = "https://erddap.marine.ie/erddap/tabledap/IrishNationalTideGaugeNetwork.csv"
 GAUGE_STATIONS = ["Union Hall Harbor", "Castletownbere Port"]
+PRIMARY_GAUGE = "wl_union_hall_harbor"
 
-OUT_CSV = "candidate_scenes.csv"
+OUT_CSV = "outputs/candidate_scenes.csv"
+
+
+def _wl_col(station: str) -> str:
+    """ERDDAP station name -> water level column name."""
+    return "wl_" + station.lower().replace(" ", "_")
 
 
 # --------------------------------------------------------------------------
@@ -126,7 +132,7 @@ def scene_inventory(aoi_name: str, bbox: list[float]) -> pd.DataFrame:
 # PART 2 -- Observed water level from the Irish National Tide Gauge Network
 # --------------------------------------------------------------------------
 def list_gauge_stations() -> pd.DataFrame:
-    """Print the station_id values ERDDAP actually uses. Run once, then hard-code."""
+    """Print the station_id values ERDDAP actually uses. Run once to check names."""
     r = requests.get(f"{ERDDAP}?station_id&distinct()", timeout=120)
     r.raise_for_status()
     return pd.read_csv(io.StringIO(r.text), skiprows=[1])
@@ -135,10 +141,10 @@ def list_gauge_stations() -> pd.DataFrame:
 def fetch_water_level(start: str, end: str) -> pd.DataFrame:
     """Water level relative to Lowest Astronomical Tide, 5-minute resolution, UTC."""
     frames = []
-    for st in GAUGE_STATIONS:
+    for station in GAUGE_STATIONS:
         query = (
             "time,station_id,Water_Level_LAT,QC_Flag"
-            f'&station_id="{st}"'
+            f'&station_id="{station}"'
             f"&time>={start}T00:00:00Z&time<={end}T23:59:59Z"
         )
         r = requests.get(f"{ERDDAP}?{query}", timeout=600)
@@ -150,15 +156,28 @@ def fetch_water_level(start: str, end: str) -> pd.DataFrame:
 
 
 def join_tide(scenes: pd.DataFrame, tide: pd.DataFrame) -> pd.DataFrame:
-    """Nearest-in-time join, rejecting matches more than 15 min from the overpass."""
-    merged = pd.merge_asof(
-        scenes.sort_values("datetime_utc"),
-        tide[["time", "Water_Level_LAT"]].rename(columns={"time": "datetime_utc"}),
-        on="datetime_utc",
-        direction="nearest",
-        tolerance=pd.Timedelta("15min"),
-    )
-    return merged.rename(columns={"Water_Level_LAT": "water_level_LAT_m"})
+    """
+    One water-level column per station. Merging both stations at once would let
+    merge_asof pick either one silently, which looks fine and is wrong.
+    Matches more than 15 min from the overpass are left as NaN.
+    """
+    out = scenes.sort_values("datetime_utc").reset_index(drop=True)
+    for station, grp in tide.groupby("station_id"):
+        col = _wl_col(str(station))
+        right = (
+            grp[["time", "Water_Level_LAT"]]
+            .rename(columns={"time": "datetime_utc", "Water_Level_LAT": col})
+            .sort_values("datetime_utc")
+            .reset_index(drop=True)
+        )
+        out = pd.merge_asof(
+            out,
+            right,
+            on="datetime_utc",
+            direction="nearest",
+            tolerance=pd.Timedelta("15min"),
+        )
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -166,15 +185,14 @@ def join_tide(scenes: pd.DataFrame, tide: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------
 def rank(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Simple transparent ranking. Deliberately NOT a learned or weighted-optimal
-    score -- it is a sorting convenience, and every scene on the shortlist still
-    gets inspected by eye before use.
+    Transparent sort, not a learned or weighted-optimal score. It is a sorting
+    convenience; every shortlisted scene still gets inspected by eye.
     """
     df = df.copy()
     df["month"] = df["datetime_utc"].dt.month
     df["in_preferred_season"] = df["month"].isin(PREFERRED_MONTHS)
     return df.sort_values(
-        ["in_preferred_season", "water_level_LAT_m", "aoi_clear_frac"],
+        ["in_preferred_season", PRIMARY_GAUGE, "aoi_clear_frac"],
         ascending=[False, True, False],
     ).reset_index(drop=True)
 
@@ -197,16 +215,31 @@ def main() -> None:
 
     scenes = pd.concat(frames, ignore_index=True)
     tide = fetch_water_level(START, END)
-    out = rank(join_tide(scenes, tide))
+
+    out = join_tide(scenes, tide)
+    n_before = len(out)
+    out = out.dropna(subset=[PRIMARY_GAUGE])
+    dropped = n_before - len(out)
+    if dropped:
+        print(f"[tide] dropped {dropped} scenes with no {PRIMARY_GAUGE} reading "
+              f"within 15 min of the overpass", file=sys.stderr)
+
+    if out.empty:
+        print(f"No scenes matched {PRIMARY_GAUGE}. Check the record start date.",
+              file=sys.stderr)
+        return
+
+    out = rank(out)
     out.to_csv(OUT_CSV, index=False)
 
     print(f"\nWrote {OUT_CSV} ({len(out)} rows). Top candidates per AOI:\n")
-    cols = ["aoi", "datetime_utc", "aoi_clear_frac", "water_level_LAT_m", "sun_elev_deg"]
+    cols = ["aoi", "datetime_utc", "aoi_clear_frac", PRIMARY_GAUGE,
+            "wl_castletownbere_port", "sun_elev_deg"]
+    cols = [c for c in cols if c in out.columns]
     for aoi, grp in out.groupby("aoi"):
         print(f"--- {aoi} ---")
         print(grp[cols].head(5).to_string(index=False), "\n")
 
 
 if __name__ == "__main__":
-    t = fetch_water_level(START, END)
-    print(t.groupby("station_id")["time"].agg(["min", "max", "count"]))
+    main()
