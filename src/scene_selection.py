@@ -73,7 +73,7 @@ PREFERRED_MONTHS = (5, 6, 7, 8)
 # as indicative for ranking, and verify the final 3-5 scenes against a local
 # prediction before drawing conclusions.
 ERDDAP = "https://erddap.marine.ie/erddap/tabledap/IrishNationalTideGaugeNetwork.csv"
-GAUGE_BBOX = dict(lat_min=51.63, lat_max=51.67, lon_min=-9.92, lon_max=-9.89)
+GAUGE_STATIONS = ["Union Hall Harbor", "Castletownbere Port"]
 
 OUT_CSV = "candidate_scenes.csv"
 
@@ -134,15 +134,17 @@ def list_gauge_stations() -> pd.DataFrame:
 
 def fetch_water_level(start: str, end: str) -> pd.DataFrame:
     """Water level relative to Lowest Astronomical Tide, 5-minute resolution, UTC."""
-    query = (
-        "time,latitude,longitude,station_id,Water_Level_LAT,QC_Flag"
-        f"&time>={start}T00:00:00Z&time<={end}T23:59:59Z"
-        f"&latitude>={GAUGE_BBOX['lat_min']}&latitude<={GAUGE_BBOX['lat_max']}"
-        f"&longitude>={GAUGE_BBOX['lon_min']}&longitude<={GAUGE_BBOX['lon_max']}"
-    )
-    r = requests.get(f"{ERDDAP}?{query}", timeout=600)
-    r.raise_for_status()
-    tide = pd.read_csv(io.StringIO(r.text), skiprows=[1])
+    frames = []
+    for st in GAUGE_STATIONS:
+        query = (
+            "time,station_id,Water_Level_LAT,QC_Flag"
+            f'&station_id="{st}"'
+            f"&time>={start}T00:00:00Z&time<={end}T23:59:59Z"
+        )
+        r = requests.get(f"{ERDDAP}?{query}", timeout=600)
+        r.raise_for_status()
+        frames.append(pd.read_csv(io.StringIO(r.text), skiprows=[1]))
+    tide = pd.concat(frames, ignore_index=True)
     tide["time"] = pd.to_datetime(tide["time"], utc=True)
     return tide.sort_values("time").reset_index(drop=True)
 
@@ -206,4 +208,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    print(list_gauge_stations())
+    t = fetch_water_level(START, END)
+    print(t.groupby("station_id")["time"].agg(["min", "max", "count"]))
