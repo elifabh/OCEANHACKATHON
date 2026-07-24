@@ -57,7 +57,7 @@ AOIS = {
     # NEGATIVE CONTROL: inner Roaringwater Bay near the Ilen outflow. Expected to
     # fail. Included deliberately -- a feasibility test needs a known-bad case to
     # locate the turbidity/CDOM boundary rather than just asserting one exists.
-    "inner_ilen": [-9.42, 51.51, -9.34, 51.56],
+    "inner_roaringwater": [-9.52, 51.49, -9.44, 51.54],
 }
 
 START, END = "2018-01-01", "2025-12-31"
