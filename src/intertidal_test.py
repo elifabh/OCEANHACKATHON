@@ -2,21 +2,26 @@
 """
 intertidal_test.py - can Sentinel-2 detect intertidal macroalgae in West Cork?
 
-CHANGES IN v2, after inspecting the real candidate_scenes.csv
-  1. TIDE GAUGE PREFERENCE. v1 auto-detected 'wl_castletownbere_port', about
-     50 km from Baltimore and with a known tidal phase difference. The primary
-     gauge is 'wl_union_hall_harbor', 15-20 km away. Column detection now
-     PREFERS union_hall, prints both gauge values for every selected scene so
-     the phase difference is visible, and accepts --tide-col to override.
-     Silently using the wrong gauge would have shifted every tide value without
-     any error being raised.
-  2. AOI FILTERING. The CSV carries an 'aoi' column, so it holds candidates for
-     all three AOIs. v1 did not filter, which would have mixed them.
-  3. SCENE MATCHING BY scene_id. Matching on Sentinel-2 system:index is exact,
-     where a date match could pick a different granule.
-  4. ADAPTIVE CLOUD THRESHOLD on aoi_clear_frac, the AOI-local clear fraction.
-     Starts strict at 0.90 and relaxes only as far as needed to obtain enough
-     scenes with enough tide spread, then prints which threshold was used.
+CHANGES IN v3
+  1. NO CONSTANT TIDE BAND. v2 attached tide as a constant image band and used
+     ee.Reducer.linearFit. Earth Engine types a constant band by its value, so
+     each scene produced Float<0.27,0.27>, Float<0.81,0.81> and so on, and the
+     collection was rejected as heterogeneous. The regression is now computed
+     from plain image arithmetic with the tide weights held on the Python side.
+     Identical mathematics, no type problem, and no collection reducers at all.
+  2. SINGLE YEAR PREFERRED. v2 selected scenes from 2021, 2024 and 2025. Algal
+     biomass varies between years, which is a confound the land control can only
+     partly absorb. The selector now looks for one year that supports the test
+     on its own and falls back to multiple years with a warning only if no
+     single year does. --multi-year forces the old behaviour.
+  3. PROPER SIGNIFICANCE TEST. v2 compared a p-value against 0.05 while also
+     accepting any correlation below -0.70. Those disagree: with six scenes,
+     p < 0.05 requires |r| >= 0.811. The criterion is now the two-tailed
+     critical value of Pearson r at df = n - 2, looked up from the scene count,
+     so the threshold tightens automatically when there are fewer scenes.
+  4. ALL-SCENE PIXELS ONLY. A pixel must be cloud-free in every scene to enter
+     the regression. This keeps the tide mean and Sxx identical for every pixel,
+     which is what makes the Python-side weights valid.
 
 WHY THIS TEST, AFTER THE SUBTIDAL ONE FAILED
 bottom_signal_test.py established that no seabed signal reaches Sentinel-2 at
@@ -26,8 +31,8 @@ its signal has to travel through metres of it.
 
 Intertidal macroalgae is a different physical problem. At low tide it is OUT of
 the water. Exposed algae behaves like terrestrial vegetation: strong reflectance
-in the near infrared, weak in the red. Water absorbs NIR almost completely. So
-the water column, which defeated the subtidal test, is simply absent.
+in the near infrared, weak in the red. Water absorbs NIR almost completely, so
+the water column that defeated the subtidal test is simply absent.
 
 THE DESIGN: TIDE DOSE-RESPONSE
 Watch the same pixels across several scenes spanning a range of tide heights.
@@ -37,9 +42,13 @@ Watch the same pixels across several scenes spanning a range of tide heights.
   Permanent land                 NDVI does not change with tide  -> CONTROL
   Permanent deep water           NDVI does not change with tide  -> CONTROL
 
-Per pixel, server-side across the scene stack:
-  - slope of NDVI against tide height        (ee.Reducer.linearFit)
-  - correlation and p-value                 (ee.Reducer.pearsonsCorrelation)
+Per pixel, from image arithmetic across the stack, with tide as the predictor:
+
+  xbar = mean(tide),  w_i = tide_i - xbar,  Sxx = sum(w_i^2)
+  Sxy  = sum(w_i * ndvi_i)
+  Syy  = sum(ndvi_i^2) - n * mean(ndvi)^2
+  slope = Sxy / Sxx
+  r     = Sxy / sqrt(Sxx * Syy)
 
 Using several tide levels rather than a low/high pair matters. A two-scene
 difference can be produced by any two-date change: cloud haze, a different sun
@@ -47,16 +56,15 @@ angle, seasonal algal growth. A monotonic dose-response across five or six tide
 levels, absent in the land and water controls, cannot.
 
 FALSIFIABILITY - the test can come back negative
-  1. LAND CONTROL must be flat. If permanent land also correlates with tide, the
-     relationship is a date artefact (atmosphere, sun angle, phenology) and the
-     whole result is void. This is the single most important check.
+  1. LAND CONTROL must be flat. If permanent land also tracks tide, the
+     relationship is a date artefact and the whole result is void. This is the
+     single most important check.
   2. WATER CONTROL must be flat, for the same reason.
-  3. The intertidal class must show a strongly NEGATIVE correlation with a
-     significant p-value, not merely a non-zero slope.
-  4. Tide range across the selected scenes must be wide enough to constitute a
-     dose. A 0.4 m spread proves nothing regardless of the statistics.
-  5. Scenes are restricted to a narrow seasonal window because algal biomass is
-     seasonal. If scenes come from several years the confound is printed.
+  3. The intertidal class must reach the critical value of r for the number of
+     scenes used, in the negative direction.
+  4. Tide range must be wide enough to constitute a dose. A 0.4 m spread proves
+     nothing regardless of the statistics.
+  5. Scenes are restricted to one season, and preferably one year.
 
 WHAT THIS PRODUCES IF IT PASSES
   - An intertidal macroalgae extent map, in hectares, from free satellite data
@@ -85,25 +93,26 @@ ESTABLISHED METHOD VERSUS OURS
   by us: whether that work specifically demonstrated intertidal kelp, and at
   what accuracy. Check the source before citing it as precedent.
   Ours: the tide dose-response design, the control classes, the specific
-  thresholds below. All printed at run time so they can be argued with.
+  thresholds. All printed at run time so they can be argued with.
 
-  Red-edge indices are reported in the literature to detect submerged
-  vegetation deeper than NIR ones. Not used here, deliberately: for FULLY
-  EXPOSED algae the water column is absent, so NIR is unimpaired and standard
-  NDVI at native 10 m is the simpler and better-established choice. Red-edge
-  belongs to the submerged problem, which is closed.
+  Red-edge indices are reported to detect submerged vegetation deeper than NIR
+  ones. Not used here, deliberately: for FULLY EXPOSED algae the water column is
+  absent, so NIR is unimpaired and standard NDVI at native 10 m is the simpler,
+  better-established choice. Red-edge belongs to the submerged problem, which is
+  closed.
 
 INPUTS
   Sentinel-2 L1C via Earth Engine, tile 29UMT.
   Tide from outputs/candidate_scenes.csv (scene_selection.py, from the Marine
   Institute Irish National Tide Gauge Network via ERDDAP, measured not
-  predicted, LAT datum, CC BY 4.0).
+  predicted, LAT datum, CC BY 4.0). Primary gauge: Union Hall Harbor.
 
 Usage
   python intertidal_test.py
   python intertidal_test.py --aoi mizen_outer
+  python intertidal_test.py --multi-year
   python intertidal_test.py --tide-col wl_castletownbere_port
-  python intertidal_test.py --scenes 2021-05-28:0.27 2019-06-15:2.10
+  python intertidal_test.py --scenes 2021-05-28:0.27 2021-06-15:2.10
   python intertidal_test.py --list-columns
 """
 
@@ -111,6 +120,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -132,13 +142,18 @@ CSV_CANDIDATES = (
 # so it is a comparison gauge, not the primary one.
 TIDE_COL_PREFERENCE = ("wl_union_hall_harbor", "wl_castletownbere_port")
 
-MONTHS = (5, 6, 7, 8)         # May-Aug: light-limited window, and peak biomass
+MONTHS = (5, 6, 7, 8)
 N_SCENES = 6
-MIN_SCENES = 4                # fewer than this and a correlation is meaningless
-MIN_TIDE_RANGE_M = 1.5        # without a dose there is no dose-response
-CLEAR_STEPS = (0.90, 0.80, 0.70, 0.60)   # aoi_clear_frac, strict first
-CS_THRESHOLD = 0.60           # Cloud Score+ per pixel, inside Earth Engine
-MIN_VALID_OBS = 4             # pixels seen in fewer scenes are dropped
+MIN_SCENES = 4
+MIN_TIDE_RANGE_M = 1.5
+CLEAR_STEPS = (0.90, 0.80, 0.70, 0.60)
+CS_THRESHOLD = 0.60
+MIN_VALID_OBS = 4
+
+# Two-tailed critical values of Pearson r at alpha = 0.05, df = n - 2.
+R_CRIT_05 = {3: 0.997, 4: 0.950, 5: 0.878, 6: 0.811, 7: 0.754, 8: 0.707,
+             9: 0.666, 10: 0.632, 11: 0.602, 12: 0.576, 13: 0.553,
+             14: 0.532, 15: 0.514}
 
 # Classification. Engineering choices, printed at run time. NDVI for exposed
 # brown algae is lower than for terrestrial vegetation because fucoxanthin
@@ -149,15 +164,21 @@ NDVI_WATER = 0.00
 LAND_MIN_NDVI = 0.25
 DEEP_WATER_MAX_NDVI = -0.10
 
-# Pass / fail
-INTERTIDAL_CORR_MAX = -0.70
-PVAL_MAX = 0.05
 CONTROL_CORR_ABS_MAX = 0.40
-CONTROL_SLOPE_ABS_MAX = 0.02  # NDVI units per metre of tide
+CONTROL_SLOPE_ABS_MAX = 0.02      # NDVI units per metre of tide
 MIN_INTERTIDAL_HA = 0.5
 
 SAMPLE_PER_CLASS = 300
 RANDOM_SEED = 42
+
+
+def r_critical(n: int) -> float:
+    """Critical |r| for significance at alpha = 0.05 with n observations."""
+    if n in R_CRIT_05:
+        return R_CRIT_05[n]
+    if n < min(R_CRIT_05):
+        return 0.999
+    return R_CRIT_05[max(R_CRIT_05)]
 
 
 # ===========================================================================
@@ -175,7 +196,6 @@ def load_candidates() -> pd.DataFrame | None:
 
 
 def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
-    """Identify the columns, preferring the most local tide gauge."""
     cols = {c.lower(): c for c in df.columns}
 
     def first_containing(*tokens: str) -> str | None:
@@ -184,17 +204,13 @@ def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
                 return orig
         return None
 
-    tide = None
     if tide_override:
         if tide_override not in df.columns:
             raise SystemExit(f"--tide-col '{tide_override}' is not in the CSV. "
                              f"Columns: {', '.join(df.columns)}")
         tide = tide_override
     else:
-        for preferred in TIDE_COL_PREFERENCE:
-            if preferred in df.columns:
-                tide = preferred
-                break
+        tide = next((c for c in TIDE_COL_PREFERENCE if c in df.columns), None)
         if tide is None:
             tide = first_containing("tide", "water_level", "wl_", "sea_level")
 
@@ -202,7 +218,6 @@ def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
         "date": first_containing("datetime", "date", "time", "acquired"),
         "tide": tide,
         "clear": first_containing("clear_frac", "aoi_clear"),
-        "cloud_pct": first_containing("cloud_pct", "cloudy_pixel"),
         "aoi": cols.get("aoi"),
         "scene_id": first_containing("scene_id", "system_index", "granule_id"),
         "sun": first_containing("sun_elev"),
@@ -211,10 +226,17 @@ def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
     }
 
 
-def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str,
-                n: int) -> tuple[list[dict], float]:
-    """Filter to this AOI and the season, then spread across the tide range."""
+def _supports_test(sub: pd.DataFrame) -> tuple[bool, float]:
+    if len(sub) < MIN_SCENES:
+        return False, 0.0
+    spread = float(sub["_tide"].max() - sub["_tide"].min())
+    return spread >= MIN_TIDE_RANGE_M, spread
+
+
+def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str, n: int,
+                allow_multi_year: bool) -> tuple[list[dict], dict]:
     d = df.copy()
+    meta: dict = {}
 
     if cols["aoi"]:
         before = len(d)
@@ -237,54 +259,63 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str,
     if d.empty:
         raise SystemExit("  Nothing left after the seasonal filter.")
 
-    if cols["scene_id"]:
-        d = d.drop_duplicates(subset=[cols["scene_id"]])
-    else:
-        d = d.drop_duplicates(subset=["_date"])
+    d = d.drop_duplicates(subset=[cols["scene_id"]]) if cols["scene_id"] \
+        else d.drop_duplicates(subset=["_date"])
 
     # Relax the clear-fraction threshold only as far as necessary.
-    chosen_frame, used_clear = None, None
     if cols["clear"]:
         d["_clear"] = pd.to_numeric(d[cols["clear"]], errors="coerce")
+        pool, used_clear = None, None
         for step in CLEAR_STEPS:
             sub = d[d["_clear"] >= step]
-            if len(sub) < MIN_SCENES:
-                print(f"  aoi_clear_frac >= {step:.2f}: {len(sub)} scenes, "
-                      f"too few")
-                continue
-            spread = sub["_tide"].max() - sub["_tide"].min()
-            if spread < MIN_TIDE_RANGE_M:
-                print(f"  aoi_clear_frac >= {step:.2f}: {len(sub)} scenes but "
-                      f"tide spread only {spread:.2f} m")
-                continue
+            ok, spread = _supports_test(sub)
+            status = "using this" if ok else "insufficient"
             print(f"  aoi_clear_frac >= {step:.2f}: {len(sub)} scenes, tide "
-                  f"spread {spread:.2f} m  <- using this")
-            chosen_frame, used_clear = sub, step
-            break
-        if chosen_frame is None:
+                  f"spread {spread:.2f} m  <- {status}")
+            if ok:
+                pool, used_clear = sub, step
+                break
+        if pool is None:
             raise SystemExit(
-                f"  No clear-fraction threshold down to {CLEAR_STEPS[-1]} gives "
-                f"{MIN_SCENES} scenes with a {MIN_TIDE_RANGE_M} m tide spread. "
-                f"Widen MONTHS, or use a different AOI.")
+                f"  No threshold down to {CLEAR_STEPS[-1]} gives {MIN_SCENES} "
+                f"scenes with a {MIN_TIDE_RANGE_M} m tide spread. Widen MONTHS "
+                f"or try another AOI.")
     else:
         print("  No clear-fraction column; using all scenes in the window.")
-        chosen_frame, used_clear = d, None
+        pool, used_clear = d, None
+    meta["clear_frac_threshold_used"] = used_clear
 
-    sel = chosen_frame.sort_values("_tide")
+    # Prefer a single year: removes the interannual biomass confound entirely.
+    chosen_year = None
+    if not allow_multi_year:
+        best = None
+        print("\n  Looking for a single year that supports the test on its own:")
+        for year, sub in pool.groupby(pool["_date"].dt.year):
+            ok, spread = _supports_test(sub)
+            print(f"    {year}: {len(sub)} scenes, tide spread {spread:.2f} m"
+                  f"{'  eligible' if ok else ''}")
+            if ok and (best is None or (spread, len(sub)) > best[0]):
+                best = ((spread, len(sub)), int(year), sub)
+        if best is not None:
+            _, chosen_year, pool = best
+            print(f"  Using {chosen_year} only. No interannual confound.")
+        else:
+            print("  No single year qualifies. Falling back to multiple years;")
+            print("  the land control is then the guard against date effects.")
+    meta["single_year"] = chosen_year
+
+    sel = pool.sort_values("_tide")
     if len(sel) > n:
         targets = np.linspace(sel["_tide"].min(), sel["_tide"].max(), n)
         idx = sorted({int((sel["_tide"] - t).abs().idxmin()) for t in targets})
         sel = sel.loc[idx].sort_values("_tide")
 
-    print(f"\n  Selected {len(sel)} scenes (tide from the '{cols['tide']}' "
-          f"gauge):")
+    print(f"\n  Selected {len(sel)} scenes (tide from '{cols['tide']}'):")
     header = f"    {'date':<12}{'tide m LAT':>11}"
     if cols["clear"]:
         header += f"{'clear':>8}"
     if cols["sun"]:
         header += f"{'sun deg':>9}"
-    for other in cols["other_tides"]:
-        header += f"{other[:14]:>16}"
     print(header)
 
     out: list[dict] = []
@@ -295,31 +326,21 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str,
             line += f"{r['_clear']:>8.2f}"
         if cols["sun"]:
             line += f"{pd.to_numeric(r[cols['sun']], errors='coerce'):>9.1f}"
-        for other in cols["other_tides"]:
-            line += f"{pd.to_numeric(r[other], errors='coerce'):>16.2f}"
         print(line)
-        out.append({
-            "date": day,
-            "tide": float(r["_tide"]),
-            "scene_id": (str(r[cols["scene_id"]]) if cols["scene_id"] else None),
-        })
-
-    if cols["other_tides"]:
-        print("  The extra column(s) are the comparison gauge(s). A visible")
-        print("  offset is the tidal phase difference and is expected; the")
-        print("  primary gauge is the one used.")
-
-    return out, (used_clear if used_clear is not None else float("nan"))
+        out.append({"date": day, "tide": float(r["_tide"]),
+                    "scene_id": (str(r[cols["scene_id"]])
+                                 if cols["scene_id"] else None)})
+    return out, meta
 
 
 # ===========================================================================
 # Earth Engine
 # ===========================================================================
 
-def build_stack(bbox: list[float], scenes: list[dict]):
-    """One image per scene with bands [tide, ndvi], cloud-masked."""
+def build_ndvi_images(bbox: list[float], scenes: list[dict]):
+    """One cloud-masked NDVI image per scene. No constant bands anywhere."""
     aoi = ee.Geometry.Rectangle(bbox)
-    base = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")
+    base = (ee.ImageCollection("COPERNICUS/S2_HARMONIZED")     # L1C, TOA
             .filterBounds(aoi)
             .filter(ee.Filter.eq("MGRS_TILE", MGRS_TILE)))
     cs_plus = ee.ImageCollection("GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED")
@@ -328,12 +349,11 @@ def build_stack(bbox: list[float], scenes: list[dict]):
     images, used = [], []
     print()
     for sc in scenes:
-        sub = None
+        sub, how = None, None
         if sc.get("scene_id"):
             cand = base.filter(ee.Filter.eq("system:index", sc["scene_id"]))
             if cand.size().getInfo() > 0:
-                sub = cand
-                how = "scene_id"
+                sub, how = cand, "scene_id"
         if sub is None:
             end = (pd.Timestamp(sc["date"]) + pd.Timedelta(days=1)
                    ).strftime("%Y-%m-%d")
@@ -341,18 +361,14 @@ def build_stack(bbox: list[float], scenes: list[dict]):
             if cand.size().getInfo() == 0:
                 print(f"    {sc['date']}: no scene on this tile, skipped")
                 continue
-            sub = cand
-            how = "date"
+            sub, how = cand, "date"
 
         img = ee.Image(sub.first())
         refl = img.select(["B4", "B8"]).divide(10000)
-        ndvi = refl.normalizedDifference(["B8", "B4"]).rename("ndvi")
-        # Constant tide band derived from a real band so it inherits the 10 m
-        # projection and the scene footprint.
-        tide_band = refl.select("B4").multiply(0).add(sc["tide"]).rename("tide")
-        valid = img.select("cs").gte(CS_THRESHOLD)
-
-        images.append(tide_band.addBands(ndvi).updateMask(valid))
+        ndvi = (refl.normalizedDifference(["B8", "B4"])
+                .updateMask(img.select("cs").gte(CS_THRESHOLD))
+                .rename("ndvi").toFloat())
+        images.append(ndvi)
         used.append(sc)
         print(f"    {sc['date']}  tide {sc['tide']:+.2f} m  matched by {how}")
 
@@ -373,29 +389,59 @@ def build_stack(bbox: list[float], scenes: list[dict]):
     years = sorted({s["date"][:4] for s in used})
     if len(years) > 1:
         print(f"  NOTE: scenes span {len(years)} years ({', '.join(years)}). "
-              "Algal biomass varies seasonally and between years, so part of")
-        print("  any signal could be growth rather than tide. The land control")
-        print("  is the guard: if land is flat, date effects are small.")
+              "Part of any signal could be interannual growth. The land")
+        print("  control is the guard: if land is flat, date effects are small.")
 
-    return ee.ImageCollection.fromImages(images), used, aoi
+    return images, used, aoi
 
 
-def per_pixel_stats(col: ee.ImageCollection) -> ee.Image:
-    """Slope, correlation and p-value of NDVI against tide, per pixel."""
-    fit = col.reduce(ee.Reducer.linearFit())              # scale, offset
-    corr = col.reduce(ee.Reducer.pearsonsCorrelation())   # correlation, p-value
-    count = col.select("ndvi").count().rename("n_obs")
+def regression_images(ndvi_imgs: list, tides: list[float]) -> ee.Image:
+    """Slope and Pearson r of NDVI against tide, per pixel.
 
-    slope = fit.select("scale").rename("slope")
-    r = corr.select([0]).rename("corr")
-    p = corr.select([1]).rename("pval")   # 'p-value' selected by position
+    The tide weights are Python floats, so no constant image band is created and
+    no ImageCollection reducer is used. Both were the source of the Earth Engine
+    heterogeneous-collection error in v2.
+
+    Masks propagate through the arithmetic, so a pixel survives only if it is
+    cloud-free in EVERY scene. That is what keeps the tide mean and Sxx the same
+    for every pixel, which the Python-side weights assume.
+    """
+    n = len(tides)
+    xbar = sum(tides) / n
+    weights = [t - xbar for t in tides]
+    sxx = sum(w * w for w in weights)
+    if sxx <= 0:
+        raise SystemExit("  All tide values identical: no predictor variance.")
+
+    sum_y = ndvi_imgs[0]
+    sum_y2 = ndvi_imgs[0].multiply(ndvi_imgs[0])
+    sxy = ndvi_imgs[0].multiply(weights[0])
+    ndvi_min = ndvi_imgs[0]
+    ndvi_max = ndvi_imgs[0]
+    count = ndvi_imgs[0].mask()
+
+    for img, w in zip(ndvi_imgs[1:], weights[1:]):
+        sum_y = sum_y.add(img)
+        sum_y2 = sum_y2.add(img.multiply(img))
+        sxy = sxy.add(img.multiply(w))
+        ndvi_min = ndvi_min.min(img)
+        ndvi_max = ndvi_max.max(img)
+        count = count.add(img.mask())
+
+    ybar = sum_y.divide(n)
+    syy = sum_y2.subtract(ybar.multiply(ybar).multiply(n))
+
+    slope = sxy.divide(sxx).rename("slope")
+    corr = sxy.divide(syy.multiply(sxx).sqrt()).rename("corr")
 
     stats = (slope
-             .addBands(r).addBands(p).addBands(count)
-             .addBands(col.select("ndvi").min().rename("ndvi_min"))
-             .addBands(col.select("ndvi").max().rename("ndvi_max"))
-             .addBands(col.select("ndvi").mean().rename("ndvi_mean")))
-    return stats.updateMask(count.gte(MIN_VALID_OBS))
+             .addBands(corr)
+             .addBands(count.rename("n_obs"))
+             .addBands(ndvi_min.rename("ndvi_min"))
+             .addBands(ndvi_max.rename("ndvi_max"))
+             .addBands(ybar.rename("ndvi_mean")))
+    # syy <= 0 means NDVI was constant: r is undefined, so drop those pixels.
+    return stats.updateMask(syy.gt(0)).updateMask(count.gte(MIN_VALID_OBS))
 
 
 def classify(stats: ee.Image) -> ee.Image:
@@ -410,7 +456,8 @@ def classify(stats: ee.Image) -> ee.Image:
             .where(water, 2)
             .where(inter, 3)          # intertidal wins where rules overlap
             .rename("cls")
-            .updateMask(stats.select("n_obs").gte(MIN_VALID_OBS)))
+            .updateMask(stats.select("n_obs").gte(MIN_VALID_OBS))
+            .toByte())
 
 
 def sample_classes(stats: ee.Image, cls: ee.Image, aoi) -> pd.DataFrame:
@@ -453,32 +500,35 @@ CLASS_NAMES = {1: "permanent land (CONTROL)",
                3: "intertidal candidate (TEST)"}
 
 
-def summarise(df: pd.DataFrame) -> dict:
+def summarise(df: pd.DataFrame, r_crit: float) -> dict:
     out = {}
-    print(f"\n  {'class':<32}{'n':>6}{'med corr':>10}{'med slope':>11}"
-          f"{'med p':>9}{'NDVI min':>10}{'NDVI max':>10}")
+    print(f"\n  {'class':<32}{'n':>6}{'med r':>9}{'|r|>=crit':>11}"
+          f"{'med slope':>11}{'NDVI min':>10}{'NDVI max':>10}")
     for value, name in CLASS_NAMES.items():
         sub = df[df["cls"] == value] if "cls" in df else df.iloc[0:0]
         if sub.empty:
             print(f"  {name:<32}{0:>6}   (no pixels in this class)")
             out[value] = {"n": 0}
             continue
+        frac_sig = float((sub["corr"].abs() >= r_crit).mean())
         rec = {
             "n": int(len(sub)),
             "median_corr": float(sub["corr"].median()),
+            "frac_significant": frac_sig,
             "median_slope": float(sub["slope"].median()),
-            "median_pval": float(sub["pval"].median()),
             "median_ndvi_min": float(sub["ndvi_min"].median()),
             "median_ndvi_max": float(sub["ndvi_max"].median()),
         }
         out[value] = rec
-        print(f"  {name:<32}{rec['n']:>6}{rec['median_corr']:>10.3f}"
-              f"{rec['median_slope']:>11.4f}{rec['median_pval']:>9.3f}"
+        print(f"  {name:<32}{rec['n']:>6}{rec['median_corr']:>9.3f}"
+              f"{frac_sig:>11.2f}{rec['median_slope']:>11.4f}"
               f"{rec['median_ndvi_min']:>10.3f}{rec['median_ndvi_max']:>10.3f}")
+    print(f"  Significance uses the two-tailed critical Pearson r at "
+          f"alpha=0.05: |r| >= {r_crit:.3f}")
     return out
 
 
-def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
+def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list[str]]:
     reasons: list[str] = []
     land, water, inter = stats.get(1, {}), stats.get(2, {}), stats.get(3, {})
 
@@ -492,7 +542,7 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
         if abs(s["median_corr"]) > CONTROL_CORR_ABS_MAX:
             controls_ok = False
             reasons.append(
-                f"{label} control correlates with tide (median r = "
+                f"{label} control tracks tide (median r = "
                 f"{s['median_corr']:+.2f}, limit {CONTROL_CORR_ABS_MAX}). "
                 f"Something other than tide differs between these dates, so "
                 f"any intertidal result is void.")
@@ -507,15 +557,16 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
         test_ok = False
         reasons.append("no intertidal candidate pixels were found at all")
     else:
-        if inter["median_corr"] > INTERTIDAL_CORR_MAX:
+        if inter["median_corr"] > -r_crit:
             test_ok = False
             reasons.append(
-                f"intertidal median r = {inter['median_corr']:+.2f}, not below "
-                f"{INTERTIDAL_CORR_MAX}. The dose-response is not convincing.")
-        if inter["median_pval"] > PVAL_MAX:
+                f"intertidal median r = {inter['median_corr']:+.3f}, not below "
+                f"-{r_crit:.3f}, the critical value for this many scenes")
+        if inter["frac_significant"] < 0.5:
             test_ok = False
             reasons.append(
-                f"intertidal median p = {inter['median_pval']:.3f} > {PVAL_MAX}")
+                f"only {inter['frac_significant']:.0%} of intertidal pixels "
+                f"reach significance; a majority is needed")
         if area_ha < MIN_INTERTIDAL_HA:
             test_ok = False
             reasons.append(
@@ -526,9 +577,9 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
     if controls_ok and test_ok:
         print("  INTERTIDAL MACROALGAE DETECTED.")
         print(f"  Extent in this AOI: {area_ha:.1f} ha")
-        print("  NDVI falls monotonically as tide rises, and both controls are")
-        print("  flat, so the relationship is submergence and not a date")
-        print("  artefact.")
+        print("  NDVI falls monotonically as tide rises, both controls are")
+        print("  flat, and the correlation clears the critical value. The")
+        print("  relationship is submergence, not a date artefact.")
         print("\n  WHAT THIS IS: intertidal macroalgae extent. NOT a Laminaria")
         print("  digitata map. NDVI cannot separate it from Fucus or")
         print("  Ascophyllum. Do NOT apply the L. hyperborea wave-attenuation")
@@ -536,9 +587,9 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
         print("\n  WHAT IT UNLOCKS")
         print("    - a working Sentinel-2 product, so 'open satellite data' is")
         print("      honest and the demonstrator criterion is addressable")
-        print("    - repeat low-tide scenes across years, which is the route to")
-        print("      the decline assessment the challenge asks for and nothing")
-        print("      in the project currently addresses")
+        print("    - repeat low-tide scenes across years, the route to the")
+        print("      decline assessment the challenge asks for and nothing in")
+        print("      the project currently addresses")
         print("    - the lower edge of this band is the upper edge of the")
         print("      subtidal zone, constraining the suitability model")
         print("\n  NEXT: validate against ground truth before claiming any")
@@ -547,17 +598,17 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
         out = "detected"
     elif not controls_ok:
         print("  TEST VOID - CONTROLS FAILED.")
-        print("  Permanent land or permanent water also tracks tide, which")
-        print("  means the scenes differ in something other than tide. Do not")
-        print("  read the intertidal row. Narrow the season, restrict to one")
-        print("  year, or raise the clear-fraction threshold, then re-run.")
+        print("  Permanent land or permanent water also tracks tide, so the")
+        print("  scenes differ in something other than tide. Do not read the")
+        print("  intertidal row. Narrow the season, restrict to one year, or")
+        print("  raise the clear-fraction threshold, then re-run.")
         out = "void"
     else:
         print("  NO INTERTIDAL SIGNAL DETECTED.")
         print("  The controls are clean, so this is a real negative rather than")
         print("  an artefact. Before locking it, check that the tide range")
-        print("  actually spans the intertidal zone here and that the AOI")
-        print("  contains enough rocky shore.")
+        print("  spans the intertidal zone here and that the AOI contains")
+        print("  enough rocky shore.")
         out = "absent"
 
     if reasons:
@@ -575,11 +626,11 @@ def verdict(stats: dict, area_ha: float) -> tuple[str, list[str]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--aoi", choices=sorted(AOIS), default=PRIMARY_AOI)
-    ap.add_argument("--tide-col", default=None,
-                    help=f"override the tide column "
-                         f"(default preference: {TIDE_COL_PREFERENCE[0]})")
+    ap.add_argument("--tide-col", default=None)
     ap.add_argument("--scenes", nargs="*", default=None, metavar="DATE:TIDE")
     ap.add_argument("--n-scenes", type=int, default=N_SCENES)
+    ap.add_argument("--multi-year", action="store_true",
+                    help="do not prefer a single year")
     ap.add_argument("--list-columns", action="store_true")
     args = ap.parse_args()
 
@@ -596,11 +647,11 @@ def main() -> int:
           f"{'=' * 72}")
     print(f"  thresholds: NDVI_VEG={NDVI_VEG}  NDVI_WATER={NDVI_WATER}  "
           f"cs>={CS_THRESHOLD}  min obs={MIN_VALID_OBS}")
-    print(f"              intertidal r <= {INTERTIDAL_CORR_MAX}  p <= {PVAL_MAX}"
-          f"  controls |r| <= {CONTROL_CORR_ABS_MAX}")
+    print(f"              controls |r| <= {CONTROL_CORR_ABS_MAX}, "
+          f"|slope| <= {CONTROL_SLOPE_ABS_MAX}")
 
     print("\n  Scene selection")
-    used_clear = float("nan")
+    meta: dict = {}
     if args.scenes:
         scenes = []
         for item in args.scenes:
@@ -630,14 +681,18 @@ def main() -> int:
             print("\n  Could not identify the date and tide columns. Use "
                   "--list-columns, then --tide-col or --scenes.")
             return 1
-        scenes, used_clear = pick_scenes(df, cols, args.aoi, args.n_scenes)
+        scenes, meta = pick_scenes(df, cols, args.aoi, args.n_scenes,
+                                   args.multi_year)
 
     ee.Initialize(project=EE_PROJECT)
-    print("\n  Building the tide stack")
-    col, used, aoi = build_stack(bbox, scenes)
+    print("\n  Building the NDVI stack")
+    ndvi_imgs, used, aoi = build_ndvi_images(bbox, scenes)
+    tides = [s["tide"] for s in used]
+    r_crit = r_critical(len(tides))
+    print(f"  {len(tides)} scenes -> critical |r| at alpha=0.05 is {r_crit:.3f}")
 
     print("\n  Per-pixel regression of NDVI against tide")
-    stats = per_pixel_stats(col)
+    stats = regression_images(ndvi_imgs, tides)
     cls = classify(stats)
 
     print("  Sampling the three classes")
@@ -655,8 +710,8 @@ def main() -> int:
     print(f"    land {land_ha:.1f} ha   deep water {water_ha:.1f} ha   "
           f"intertidal {area_ha:.1f} ha")
 
-    summary = summarise(df_s)
-    outcome, reasons = verdict(summary, area_ha)
+    summary = summarise(df_s, r_crit)
+    outcome, reasons = verdict(summary, area_ha, r_crit)
 
     tag = f"{args.aoi}_{len(used)}scenes"
     csv_path = OUT_DIR / f"pixels_{tag}.csv"
@@ -665,18 +720,17 @@ def main() -> int:
     report = {
         "aoi": args.aoi,
         "tide_gauge_column": args.tide_col or TIDE_COL_PREFERENCE[0],
-        "clear_frac_threshold_used": used_clear,
         "scenes": used,
-        "tide_range_m": (max(s["tide"] for s in used)
-                         - min(s["tide"] for s in used)),
+        "n_scenes": len(used),
+        "tide_range_m": max(tides) - min(tides),
+        "r_critical_alpha05": r_crit,
         "months_filter": list(MONTHS),
+        "selection_meta": meta,
         "thresholds": {
             "cs": CS_THRESHOLD, "min_valid_obs": MIN_VALID_OBS,
             "ndvi_veg": NDVI_VEG, "ndvi_water": NDVI_WATER,
             "land_min_ndvi": LAND_MIN_NDVI,
             "deep_water_max_ndvi": DEEP_WATER_MAX_NDVI,
-            "intertidal_corr_max": INTERTIDAL_CORR_MAX,
-            "pval_max": PVAL_MAX,
             "control_corr_abs_max": CONTROL_CORR_ABS_MAX,
             "control_slope_abs_max": CONTROL_SLOPE_ABS_MAX,
         },
@@ -691,14 +745,17 @@ def main() -> int:
             "L. hyperborea wave-attenuation coefficients (Dubi & Torum 1996; "
             "Mork 1996) must NOT be applied to this layer.",
             "No ground-truth validation. The extent figure is unvalidated.",
+            "TOA (L1C) reflectance. NDVI is a ratio, so it is far less "
+            "sensitive to atmospheric offset than absolute reflectance, but it "
+            "is not immune.",
         ],
         "attribution": ATTRIBUTION,
     }
-    json_path = OUT_DIR / f"report_{tag}.json"
-    json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (OUT_DIR / f"report_{tag}.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8")
 
     print(f"\n  written: {csv_path}")
-    print(f"  written: {json_path}   <- cite this, do not retype the numbers")
+    print(f"  written: {OUT_DIR / f'report_{tag}.json'}   <- cite this")
     return 0
 
 
