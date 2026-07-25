@@ -255,19 +255,13 @@ def _fetch_bisect(points: list[list[float]], depth: int,
     got = _post_samples(points)
     if got is not None:
         return got
-
-    if len(points) == 1:
-        rejected.append(points[0])
-        return []
-
-    next_size = next((s for s in BISECT_SIZES if s < len(points)),
-                     max(1, len(points) // 2))
-    out: list[dict] = []
-    for sub in chunked(points, next_size):
-        out.extend(_fetch_bisect(sub, depth + 1, rejected))
-        time.sleep(0.2)
-    return out
-
+    # Do not bisect. If the cause is a per-session request quota, splitting the
+    # batch multiplies the request count and makes matters worse. The test needs
+    # far fewer points than the AOI provides, so a rejected batch is recorded
+    # and skipped.
+    rejected.extend(points)
+    print(f"      batch of {len(points)} skipped after {MAX_ATTEMPTS} attempts")
+    return []
 
 def sample_bathymetry(points: list[list[float]]) -> tuple[pd.DataFrame, list]:
     """Sample INFOMAR bathymetry, restricted to Primary (survey) rasters."""
