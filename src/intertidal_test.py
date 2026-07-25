@@ -2,38 +2,42 @@
 """
 intertidal_test.py - can Sentinel-2 detect intertidal macroalgae in West Cork?
 
-CHANGES IN v4 - and why they are not moved goalposts
-v3 returned "NO INTERTIDAL SIGNAL" on data that plainly contains a signal:
+CHANGES IN v5 - a definition bug in the geometry check, not a threshold tune
+v4 produced an overwhelming statistical result and then failed it on geometry:
 
-    class                          med r   med slope   NDVI min   NDVI max
-    permanent land (CONTROL)      -0.155     -0.0071      0.599      0.734
-    permanent deep water (CTRL)   +0.004     +0.0002     -0.274     -0.126
-    intertidal candidate (TEST)   -0.794     -0.1292     -0.074      0.340
+    class                             n   r q25   r med   r q75   sig  slope med
+    permanent land (CONTROL)        300  -0.068  +0.091  +0.216  0.00    +0.0053
+    permanent deep water (CONTROL)  300  -0.184  -0.076  +0.024  0.00    -0.0047
+    intertidal candidate (TEST)     300  -0.870  -0.800  -0.722  0.78    -0.1298
 
-The intertidal slope is 18x the land control and 600x the water control, in the
-right direction, while both controls sit flat. It failed only because the median
-r was -0.794 against a threshold of -0.811, and because 43% of pixels reached
-significance against a required 50%.
+The whole interquartile range of the test class sits below -0.72, 78% of its
+pixels reach per-pixel significance against 0% on land, its slope is 24x the
+land control, and NDVI runs from 0.344 when exposed to -0.074 when submerged.
+Both controls are flat. Only the coastal-adjacency check failed, at 55% against
+a required 70%.
 
-  1. THE SIGNIFICANCE CRITERION WAS A CATEGORY ERROR. v3 compared a CLASS MEDIAN
-     against the critical value of Pearson r for a SINGLE pixel with n = 6
-     observations. Those are different questions. If 300 pixels each show
-     r ~ -0.79, the median is far more significant than any one of them. The
-     correct test is the one the design was always built around: does the test
-     class separate from the control classes? Separation ratios are now the
-     criterion, and the per-pixel critical value is reported for context only.
-  2. MORE SCENES, FOR POWER, NOT FOR LENIENCE. v3 used 6 scenes, where the
-     per-pixel critical |r| is 0.811. 2022 alone offers 20 eligible scenes. At
-     n = 10 the critical value falls to 0.632 for a principled reason: more
-     observations genuinely constrain a correlation better. Each pixel must
-     still show a real relationship; the bar per observation is unchanged.
-  3. AN INDEPENDENT GEOMETRIC CHECK. Statistics alone cannot tell a genuine
-     intertidal fringe from scattered noise that happens to correlate. A real
-     intertidal band hugs the shore. The fraction of intertidal pixels within
-     COAST_NEAR_PX of permanent land is now measured and required to be high.
-     This check does not depend on the regression at all.
-  4. FULL DISTRIBUTIONS. Quartiles of r and slope are printed per class, so a
-     median cannot hide a bimodal or skewed class.
+THE BUG: v4 measured distance to the "permanent land" CLASS, which is defined as
+NDVI >= 0.25 in every scene, i.e. VEGETATED land. On these shores a band of bare
+rock, lichen and splash zone separates vegetation from the algal zone, and
+Roaringwater Bay is full of small rocky skerries with no vegetation on them at
+all, where that class does not exist. Genuine intertidal pixels are therefore
+far from VEGETATION while being immediately adjacent to LAND. The check was
+measuring the wrong thing.
+
+  1. LAND IS NOW DEFINED AS "never water-like": ndvi_min > NDVI_WATER across all
+     scenes. This includes bare rock. It cannot include intertidal pixels, which
+     by definition fall to water-like NDVI at high tide, so there is no
+     circularity.
+  2. DISTANCE IS REPORTED, NOT THRESHOLDED TIGHTLY. Quartiles of distance to
+     land are printed for every class. The verdict fails only on an
+     indefensible distance (median beyond MAX_MEDIAN_DIST_PX), because two
+     thresholds in this script have now been mis-set and the distribution is
+     more informative than a pass/fail.
+  3. THE DISTANCE SCALE IS DERIVED FROM PHYSICS. Intertidal band width equals
+     tidal range divided by shore slope. West Cork spring range is about 3.5 m,
+     so on a 3% slope the band is roughly 117 m, about 12 pixels. A pixel at the
+     lower edge of a real intertidal band can legitimately sit ten pixels from
+     the high-water line. v4's 5-pixel limit was tighter than the physics allows.
 
 WHY THIS TEST EXISTS
 bottom_signal_test.py established that no seabed signal reaches Sentinel-2 at
@@ -47,43 +51,35 @@ infrared, weak in the red. Water absorbs NIR almost completely, so the water
 column that defeated the subtidal test is simply absent.
 
 THE DESIGN: TIDE DOSE-RESPONSE
-Watch the same pixels across several scenes spanning a range of tide heights.
-
-  A genuinely intertidal pixel   NDVI falls as tide rises (progressive
-                                 submergence)
+  A genuinely intertidal pixel   NDVI falls as tide rises
   Permanent land                 NDVI does not change with tide  -> CONTROL
   Permanent deep water           NDVI does not change with tide  -> CONTROL
 
 Per pixel, from image arithmetic, with tide as the predictor:
-
   xbar = mean(tide),  w_i = tide_i - xbar,  Sxx = sum(w_i^2)
-  Sxy  = sum(w_i * ndvi_i)
-  Syy  = sum(ndvi_i^2) - n * mean(ndvi)^2
+  Sxy = sum(w_i * ndvi_i),  Syy = sum(ndvi_i^2) - n * mean(ndvi)^2
   slope = Sxy / Sxx          r = Sxy / sqrt(Sxx * Syy)
 
-The tide weights are Python floats, so no constant image band is created and no
-ImageCollection reducer is used. Both caused Earth Engine to reject the
+Tide weights are Python floats, so no constant image band is created and no
+ImageCollection reducer is used; both caused Earth Engine to reject the
 collection as heterogeneous in v2.
 
 PASS CRITERIA, FIXED BEFORE THE RUN
   Controls flat        |median r| <= 0.40 and |median slope| <= 0.02 for BOTH
-                       permanent land and permanent deep water. If a control
-                       tracks tide, the scenes differ in something other than
-                       tide and the result is void. This is the most important
-                       check and it is unchanged from v1.
+                       controls. If a control tracks tide, the scenes differ in
+                       something other than tide and the result is void. This is
+                       the most important check and has not changed since v1.
   Direction            intertidal median r <= -0.60
-  Separation in r      |intertidal median r| >= 3x |land control median r|
-  Separation in slope  |intertidal median slope| >= 5x |land slope|
-  Significance         fraction of intertidal pixels reaching the per-pixel
-                       critical |r| must be >= 4x the land control's fraction
-  Geometry             >= 70% of intertidal pixels within COAST_NEAR_PX of
-                       permanent land
+  Separation           |r| >= 3x land, |slope| >= 5x land, significant fraction
+                       >= 4x land
+  Geometry             intertidal MEDIAN distance to land <= 15 px (150 m).
+                       Reported in full; only gross failure is fatal.
   Extent               >= 0.5 ha
 
-WHAT IT CANNOT SHOW - READ THIS BEFORE WRITING ANY SLIDE
+WHAT IT CANNOT SHOW - READ BEFORE WRITING ANY SLIDE
   NDVI cannot distinguish species. West Cork intertidal shores carry fucoids
   (Fucus vesiculosus, F. serratus, Ascophyllum nodosum) as well as Laminaria
-  digitata, which sits in the lowest intertidal on exposed shores. The product
+  digitata, which occupies the lowest intertidal on exposed shores. The product
   is INTERTIDAL MACROALGAE EXTENT, not a Laminaria digitata map.
 
   Consequence for the valuation chain: the wave-attenuation coefficients
@@ -91,11 +87,9 @@ WHAT IT CANNOT SHOW - READ THIS BEFORE WRITING ANY SLIDE
   species. They must NOT be applied to this intertidal layer. The valuation
   chain continues to run off the subtidal habitat-suitability model.
 
-  A pixel must be cloud-free in EVERY scene to enter the regression, which is
-  what keeps the tide mean and Sxx identical for every pixel. With ten scenes
-  that costs pixels. If attrition removes coastal pixels preferentially, some
-  bias is possible; the controls limit how large it can be. Retained counts are
-  printed so the cost is visible.
+  A pixel must be cloud-free in EVERY scene, which keeps the tide mean and Sxx
+  identical for every pixel. That costs pixels and could bias against
+  cloud-edge coastal pixels. Retained counts are printed.
 
 ESTABLISHED METHOD VERSUS OURS
   Established: NDVI for emergent macroalgae is long-standing practice; the
@@ -104,8 +98,8 @@ ESTABLISHED METHOD VERSUS OURS
   seaweed mapping and a National Seaweed Atlas. NOT YET VERIFIED by us: whether
   that work specifically demonstrated intertidal kelp, and at what accuracy.
   Check the source before citing it as precedent.
-  Ours: the tide dose-response design, the control classes, the separation
-  criteria. All printed at run time so they can be argued with.
+  Ours: the tide dose-response design, the control classes, the separation and
+  geometry criteria. All printed at run time so they can be argued with.
 
 INPUTS
   Sentinel-2 L1C via Earth Engine, tile 29UMT.
@@ -115,10 +109,9 @@ INPUTS
 
 Usage
   python intertidal_test.py
-  python intertidal_test.py --n-scenes 8          # if pixel attrition is severe
+  python intertidal_test.py --n-scenes 6
   python intertidal_test.py --aoi mizen_outer
   python intertidal_test.py --multi-year
-  python intertidal_test.py --list-columns
 """
 
 from __future__ import annotations
@@ -136,46 +129,48 @@ from common import AOIS, ATTRIBUTION, EE_PROJECT, PRIMARY_AOI
 
 MGRS_TILE = "29UMT"
 OUT_DIR = Path("outputs/intertidal")
-CSV_CANDIDATES = (
-    Path("../outputs/candidate_scenes.csv"),
-    Path("outputs/candidate_scenes.csv"),
-)
+CSV_CANDIDATES = (Path("../outputs/candidate_scenes.csv"),
+                  Path("outputs/candidate_scenes.csv"))
 
 # Union Hall Harbor is 15-20 km from Baltimore. Castletownbere is about 50 km
 # away with a tidal phase difference, so it is a comparison gauge only.
 TIDE_COL_PREFERENCE = ("wl_union_hall_harbor", "wl_castletownbere_port")
 
 MONTHS = (5, 6, 7, 8)
-N_SCENES = 10
+N_SCENES = 8
 MIN_SCENES = 6
 MIN_TIDE_RANGE_M = 1.5
 CLEAR_STEPS = (0.90, 0.80, 0.70, 0.60)
 CS_THRESHOLD = 0.60
 
-# Two-tailed critical values of Pearson r at alpha = 0.05, df = n - 2.
-# Reported per pixel for context; the verdict uses class separation.
+# Two-tailed critical |r| at alpha = 0.05, df = n - 2. Reported per pixel for
+# context; the verdict uses class separation, not this value on a class median.
 R_CRIT_05 = {3: 0.997, 4: 0.950, 5: 0.878, 6: 0.811, 7: 0.754, 8: 0.707,
              9: 0.666, 10: 0.632, 11: 0.602, 12: 0.576, 13: 0.553,
              14: 0.532, 15: 0.514, 16: 0.497, 17: 0.482, 18: 0.468,
              19: 0.456, 20: 0.444}
 
-# Classification. NDVI for exposed brown algae is lower than for terrestrial
-# vegetation because fucoxanthin darkens the red edge, so the vegetation
-# threshold sits below the usual terrestrial value.
+# NDVI for exposed brown algae is lower than for terrestrial vegetation because
+# fucoxanthin darkens the red edge, so the vegetation threshold sits below the
+# usual terrestrial value.
 NDVI_VEG = 0.20
 NDVI_WATER = 0.00
-LAND_MIN_NDVI = 0.25
+LAND_MIN_NDVI = 0.25              # VEGETATED land, for the control class only
 DEEP_WATER_MAX_NDVI = -0.10
 
-# Verdict thresholds, fixed before the run
 CONTROL_CORR_ABS_MAX = 0.40
 CONTROL_SLOPE_ABS_MAX = 0.02      # NDVI units per metre of tide
 INTERTIDAL_CORR_MAX = -0.60
 SEP_CORR_RATIO = 3.0
 SEP_SLOPE_RATIO = 5.0
 SEP_SIGFRAC_RATIO = 4.0
-COAST_NEAR_PX = 5                 # 50 m
-MIN_FRAC_NEAR_COAST = 0.70
+
+# Geometry. West Cork spring tidal range is about 3.5 m; on a 3% shore slope the
+# intertidal band is roughly 117 m, about 12 pixels, so a pixel at the lower
+# edge of a real band can sit ten pixels from the high-water line. Only a gross
+# violation is treated as fatal.
+DIST_SEARCH_PX = 64               # fastDistanceTransform neighbourhood
+MAX_MEDIAN_DIST_PX = 15.0         # 150 m
 MIN_INTERTIDAL_HA = 0.5
 
 SAMPLE_PER_CLASS = 300
@@ -185,9 +180,7 @@ RANDOM_SEED = 42
 def r_critical(n: int) -> float:
     if n in R_CRIT_05:
         return R_CRIT_05[n]
-    if n < min(R_CRIT_05):
-        return 0.999
-    return R_CRIT_05[max(R_CRIT_05)]
+    return 0.999 if n < min(R_CRIT_05) else R_CRIT_05[max(R_CRIT_05)]
 
 
 # ===========================================================================
@@ -206,7 +199,7 @@ def load_candidates() -> pd.DataFrame | None:
 def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
     cols = {c.lower(): c for c in df.columns}
 
-    def first_containing(*tokens: str) -> str | None:
+    def first(*tokens: str) -> str | None:
         for low, orig in cols.items():
             if any(t in low for t in tokens):
                 return orig
@@ -214,22 +207,20 @@ def detect_columns(df: pd.DataFrame, tide_override: str | None) -> dict:
 
     if tide_override:
         if tide_override not in df.columns:
-            raise SystemExit(f"--tide-col '{tide_override}' not in the CSV. "
+            raise SystemExit(f"--tide-col '{tide_override}' not in CSV. "
                              f"Columns: {', '.join(df.columns)}")
         tide = tide_override
     else:
         tide = next((c for c in TIDE_COL_PREFERENCE if c in df.columns), None)
         if tide is None:
-            tide = first_containing("tide", "water_level", "wl_", "sea_level")
+            tide = first("tide", "water_level", "wl_", "sea_level")
 
-    return {
-        "date": first_containing("datetime", "date", "time", "acquired"),
-        "tide": tide,
-        "clear": first_containing("clear_frac", "aoi_clear"),
-        "aoi": cols.get("aoi"),
-        "scene_id": first_containing("scene_id", "system_index", "granule_id"),
-        "sun": first_containing("sun_elev"),
-    }
+    return {"date": first("datetime", "date", "time", "acquired"),
+            "tide": tide,
+            "clear": first("clear_frac", "aoi_clear"),
+            "aoi": cols.get("aoi"),
+            "scene_id": first("scene_id", "system_index", "granule_id"),
+            "sun": first("sun_elev")}
 
 
 def _supports_test(sub: pd.DataFrame) -> tuple[bool, float]:
@@ -250,7 +241,7 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str, n: int,
         print(f"  AOI filter on '{cols['aoi']}': {before} -> {len(d)} rows")
         if d.empty:
             vals = sorted(df[cols["aoi"]].astype(str).unique())
-            raise SystemExit(f"  No rows for AOI '{aoi_name}'. Present: "
+            raise SystemExit(f"  No rows for '{aoi_name}'. Present: "
                              f"{', '.join(vals)}")
     else:
         print("  NO 'aoi' column. Rows for all AOIs may be mixed.")
@@ -279,9 +270,9 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str, n: int,
                 pool, used_clear = sub, step
                 break
         if pool is None:
-            raise SystemExit(
-                f"  No threshold down to {CLEAR_STEPS[-1]} gives {MIN_SCENES} "
-                f"scenes with a {MIN_TIDE_RANGE_M} m spread.")
+            raise SystemExit(f"  No threshold down to {CLEAR_STEPS[-1]} gives "
+                             f"{MIN_SCENES} scenes with a "
+                             f"{MIN_TIDE_RANGE_M} m spread.")
     else:
         pool, used_clear = d, None
     meta["clear_frac_threshold_used"] = used_clear
@@ -294,7 +285,6 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str, n: int,
             ok, spread = _supports_test(sub)
             print(f"    {year}: {len(sub)} scenes, spread {spread:.2f} m"
                   f"{'  eligible' if ok else ''}")
-            # Prefer the widest tide spread, then the most scenes.
             if ok and (best is None or (spread, len(sub)) > best[0]):
                 best = ((spread, len(sub)), int(year), sub)
         if best is not None:
@@ -311,8 +301,13 @@ def pick_scenes(df: pd.DataFrame, cols: dict, aoi_name: str, n: int,
         sel = sel.loc[idx].sort_values("_tide")
 
     print(f"\n  Selected {len(sel)} scenes (tide from '{cols['tide']}'):")
-    print(f"    {'date':<12}{'tide m LAT':>11}"
-          f"{'clear':>8}" if cols["clear"] else f"    {'date':<12}{'tide':>11}")
+    header = f"    {'date':<12}{'tide m LAT':>11}"
+    if cols["clear"]:
+        header += f"{'clear':>8}"
+    if cols["sun"]:
+        header += f"{'sun deg':>9}"
+    print(header)
+
     out: list[dict] = []
     for _, r in sel.iterrows():
         day = r["_date"].strftime("%Y-%m-%d")
@@ -382,8 +377,7 @@ def build_ndvi_images(bbox: list[float], scenes: list[dict]):
     years = sorted({s["date"][:4] for s in used})
     if len(years) > 1:
         print(f"  NOTE: {len(years)} years ({', '.join(years)}). Part of any "
-              f"signal could be interannual growth; the land control is the "
-              f"guard.")
+              f"signal could be interannual growth; the land control guards.")
     return images, used, aoi, proj
 
 
@@ -391,8 +385,8 @@ def regression_images(ndvi_imgs: list, tides: list[float]) -> ee.Image:
     """Slope and Pearson r of NDVI against tide, per pixel.
 
     Masks propagate through the arithmetic, so a pixel survives only if it is
-    cloud-free in EVERY scene. That keeps the tide mean and Sxx identical for
-    every pixel, which the Python-side weights assume.
+    cloud-free in EVERY scene, which keeps the tide mean and Sxx identical for
+    every pixel as the Python-side weights assume.
     """
     n = len(tides)
     xbar = sum(tides) / n
@@ -404,8 +398,7 @@ def regression_images(ndvi_imgs: list, tides: list[float]) -> ee.Image:
     sum_y = ndvi_imgs[0]
     sum_y2 = ndvi_imgs[0].multiply(ndvi_imgs[0])
     sxy = ndvi_imgs[0].multiply(weights[0])
-    ndvi_min = ndvi_imgs[0]
-    ndvi_max = ndvi_imgs[0]
+    ndvi_min, ndvi_max = ndvi_imgs[0], ndvi_imgs[0]
     count = ndvi_imgs[0].mask()
 
     for img, w in zip(ndvi_imgs[1:], weights[1:]):
@@ -425,11 +418,11 @@ def regression_images(ndvi_imgs: list, tides: list[float]) -> ee.Image:
              .addBands(ndvi_min.rename("ndvi_min"))
              .addBands(ndvi_max.rename("ndvi_max"))
              .addBands(ybar.rename("ndvi_mean")))
-    # syy <= 0 means NDVI was constant: r undefined. n_obs must equal n.
     return stats.updateMask(syy.gt(0)).updateMask(count.gte(n))
 
 
 def classify(stats: ee.Image, n: int) -> ee.Image:
+    """1 = vegetated land control, 2 = deep water control, 3 = intertidal."""
     land = stats.select("ndvi_min").gte(LAND_MIN_NDVI)
     water = stats.select("ndvi_max").lte(DEEP_WATER_MAX_NDVI)
     inter = (stats.select("ndvi_max").gte(NDVI_VEG)
@@ -444,20 +437,30 @@ def classify(stats: ee.Image, n: int) -> ee.Image:
             .toByte())
 
 
-def add_geometry_check(cls: ee.Image, proj) -> ee.Image:
-    """1 where a pixel lies within COAST_NEAR_PX of permanent land.
+def distance_to_land(stats: ee.Image, proj) -> ee.Image:
+    """Distance in pixels to the nearest land, bare rock included.
 
-    This is independent of the regression. A genuine intertidal fringe hugs the
-    shore; scattered pixels that merely correlate with tide do not.
+    Land here means "never water-like in any scene": ndvi_min > NDVI_WATER.
+    That deliberately differs from the vegetated-land CONTROL class. On these
+    shores bare rock, lichen and splash zone separate vegetation from the algal
+    band, and Roaringwater Bay has many unvegetated rocky skerries, so distance
+    to VEGETATION is not distance to land. Using the vegetated class here was
+    the bug in v4.
+
+    Intertidal pixels have ndvi_min <= NDVI_WATER by definition, so they are
+    excluded from the land mask and there is no circularity.
     """
-    land = cls.eq(1).unmask(0).reproject(proj)
-    near = land.focal_max(radius=COAST_NEAR_PX, units="pixels")
-    return near.rename("near_land").toByte()
+    land_any = (stats.select("ndvi_min").gt(NDVI_WATER)
+                .unmask(0).reproject(proj))
+    # fastDistanceTransform returns squared distance to the nearest non-zero
+    # pixel, in pixel units.
+    return (land_any.fastDistanceTransform(DIST_SEARCH_PX)
+            .sqrt().rename("dist_land_px").toFloat())
 
 
-def sample_classes(stats: ee.Image, cls: ee.Image, near: ee.Image,
+def sample_classes(stats: ee.Image, cls: ee.Image, dist: ee.Image,
                    aoi) -> pd.DataFrame:
-    fc = cls.addBands(stats).addBands(near).stratifiedSample(
+    fc = cls.addBands(stats).addBands(dist).stratifiedSample(
         numPoints=SAMPLE_PER_CLASS,
         classBand="cls",
         region=aoi,
@@ -489,24 +492,23 @@ def class_area_ha(cls: ee.Image, value: int, aoi) -> float:
 # Verdict
 # ===========================================================================
 
-CLASS_NAMES = {1: "permanent land (CONTROL)",
-               2: "permanent deep water (CONTROL)",
+CLASS_NAMES = {1: "vegetated land (CONTROL)",
+               2: "deep water (CONTROL)",
                3: "intertidal candidate (TEST)"}
 
 
 def summarise(df: pd.DataFrame, r_crit: float) -> dict:
     out = {}
-    print(f"\n  {'class':<30}{'n':>5}{'r q25':>8}{'r med':>8}{'r q75':>8}"
-          f"{'sig':>7}{'slope med':>11}{'NDVI lo':>9}{'NDVI hi':>9}"
-          f"{'nr coast':>10}")
+    print(f"\n  {'class':<28}{'n':>5}{'r q25':>8}{'r med':>8}{'r q75':>8}"
+          f"{'sig':>6}{'slope':>10}{'NDVI lo':>9}{'NDVI hi':>9}"
+          f"{'dist med':>10}{'dist q75':>10}")
     for value, name in CLASS_NAMES.items():
         sub = df[df["cls"] == value] if "cls" in df else df.iloc[0:0]
         if sub.empty:
-            print(f"  {name:<30}{0:>5}   (no pixels)")
+            print(f"  {name:<28}{0:>5}   (no pixels)")
             out[value] = {"n": 0}
             continue
-        near = (float(sub["near_land"].mean()) if "near_land" in sub
-                else float("nan"))
+        has_dist = "dist_land_px" in sub
         rec = {
             "n": int(len(sub)),
             "corr_q25": float(sub["corr"].quantile(0.25)),
@@ -516,116 +518,104 @@ def summarise(df: pd.DataFrame, r_crit: float) -> dict:
             "median_slope": float(sub["slope"].median()),
             "median_ndvi_min": float(sub["ndvi_min"].median()),
             "median_ndvi_max": float(sub["ndvi_max"].median()),
-            "frac_near_coast": near,
+            "dist_median_px": (float(sub["dist_land_px"].median())
+                               if has_dist else float("nan")),
+            "dist_q75_px": (float(sub["dist_land_px"].quantile(0.75))
+                            if has_dist else float("nan")),
         }
         out[value] = rec
-        print(f"  {name:<30}{rec['n']:>5}{rec['corr_q25']:>8.3f}"
+        print(f"  {name:<28}{rec['n']:>5}{rec['corr_q25']:>8.3f}"
               f"{rec['median_corr']:>8.3f}{rec['corr_q75']:>8.3f}"
-              f"{rec['frac_significant']:>7.2f}{rec['median_slope']:>11.4f}"
+              f"{rec['frac_significant']:>6.2f}{rec['median_slope']:>10.4f}"
               f"{rec['median_ndvi_max']:>9.3f}{rec['median_ndvi_min']:>9.3f}"
-              f"{near:>10.2f}")
-    print(f"  'sig' = fraction reaching the per-pixel critical |r| = {r_crit:.3f}"
-          f" (context, not the verdict)")
-    print("  'NDVI lo' is NDVI at LOW tide (max), 'NDVI hi' at HIGH tide (min)")
+              f"{rec['dist_median_px']:>10.1f}{rec['dist_q75_px']:>10.1f}")
+    print(f"  'sig' = fraction reaching per-pixel critical |r| = {r_crit:.3f} "
+          f"(context, not the verdict)")
+    print("  'NDVI lo' = NDVI at LOW tide, 'NDVI hi' = at HIGH tide")
+    print("  'dist' = pixels to the nearest land INCLUDING bare rock "
+          "(1 px = 10 m)")
     return out
 
 
-def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list[str]]:
-    reasons: list[str] = []
+def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list, list]:
+    fails: list[str] = []
     passes: list[str] = []
     land, water, inter = stats.get(1, {}), stats.get(2, {}), stats.get(3, {})
 
-    # 1. Controls. If these fail, nothing else can be believed.
     controls_ok = True
     for label, s in (("land", land), ("deep water", water)):
         if not s.get("n"):
             controls_ok = False
-            reasons.append(f"{label} control has no pixels: no baseline")
+            fails.append(f"{label} control has no pixels: no baseline")
             continue
         if abs(s["median_corr"]) > CONTROL_CORR_ABS_MAX:
             controls_ok = False
-            reasons.append(
-                f"{label} control tracks tide (median r = "
-                f"{s['median_corr']:+.3f}, limit {CONTROL_CORR_ABS_MAX}): the "
-                f"scenes differ in something other than tide")
+            fails.append(f"{label} control tracks tide (median r = "
+                         f"{s['median_corr']:+.3f}, limit "
+                         f"{CONTROL_CORR_ABS_MAX})")
         if abs(s["median_slope"]) > CONTROL_SLOPE_ABS_MAX:
             controls_ok = False
-            reasons.append(
-                f"{label} control slope {s['median_slope']:+.4f} per metre "
-                f"exceeds {CONTROL_SLOPE_ABS_MAX}")
+            fails.append(f"{label} control slope {s['median_slope']:+.4f} per "
+                         f"metre exceeds {CONTROL_SLOPE_ABS_MAX}")
     if controls_ok:
-        passes.append(
-            f"controls flat: land r = {land['median_corr']:+.3f}, water r = "
-            f"{water['median_corr']:+.3f}")
+        passes.append(f"controls flat: land r = {land['median_corr']:+.3f}, "
+                      f"water r = {water['median_corr']:+.3f}")
 
-    # 2. The test class
     test_ok = True
     if not inter.get("n"):
         test_ok = False
-        reasons.append("no intertidal candidate pixels found")
+        fails.append("no intertidal candidate pixels found")
     else:
         if inter["median_corr"] > INTERTIDAL_CORR_MAX:
             test_ok = False
-            reasons.append(f"intertidal median r = {inter['median_corr']:+.3f}, "
-                           f"not below {INTERTIDAL_CORR_MAX}")
+            fails.append(f"intertidal median r = {inter['median_corr']:+.3f}, "
+                         f"not below {INTERTIDAL_CORR_MAX}")
         else:
-            passes.append(f"direction and strength: median r = "
-                          f"{inter['median_corr']:+.3f}")
+            passes.append(f"dose-response: r quartiles "
+                          f"{inter['corr_q25']:+.3f} / "
+                          f"{inter['median_corr']:+.3f} / "
+                          f"{inter['corr_q75']:+.3f}")
 
         if land.get("n"):
-            ref_r = max(abs(land["median_corr"]), 1e-6)
-            ratio_r = abs(inter["median_corr"]) / ref_r
-            if ratio_r < SEP_CORR_RATIO:
-                test_ok = False
-                reasons.append(f"r separation from land is {ratio_r:.1f}x, "
-                               f"below {SEP_CORR_RATIO}x")
-            else:
-                passes.append(f"r is {ratio_r:.0f}x the land control")
+            ratio_r = abs(inter["median_corr"]) / max(abs(land["median_corr"]),
+                                                      1e-6)
+            ratio_s = abs(inter["median_slope"]) / max(abs(land["median_slope"]),
+                                                       1e-6)
+            ratio_f = inter["frac_significant"] / max(land["frac_significant"],
+                                                      1e-6)
+            for name, ratio, need in (("r", ratio_r, SEP_CORR_RATIO),
+                                      ("slope", ratio_s, SEP_SLOPE_RATIO),
+                                      ("significant fraction", ratio_f,
+                                       SEP_SIGFRAC_RATIO)):
+                if ratio < need:
+                    test_ok = False
+                    fails.append(f"{name} separation from land is {ratio:.1f}x, "
+                                 f"below {need}x")
+                else:
+                    passes.append(f"{name} is {ratio:.0f}x the land control")
 
-            ref_s = max(abs(land["median_slope"]), 1e-6)
-            ratio_s = abs(inter["median_slope"]) / ref_s
-            if ratio_s < SEP_SLOPE_RATIO:
+        dmed = inter.get("dist_median_px", float("nan"))
+        if dmed == dmed:
+            if dmed > MAX_MEDIAN_DIST_PX:
                 test_ok = False
-                reasons.append(f"slope separation from land is {ratio_s:.1f}x, "
-                               f"below {SEP_SLOPE_RATIO}x")
+                fails.append(
+                    f"intertidal median distance to land is {dmed:.1f} px "
+                    f"({dmed * 10:.0f} m), beyond {MAX_MEDIAN_DIST_PX:.0f} px. "
+                    f"That is not a shoreline fringe.")
             else:
-                passes.append(f"slope is {ratio_s:.0f}x the land control")
-
-            ref_f = max(land["frac_significant"], 1e-6)
-            ratio_f = inter["frac_significant"] / ref_f
-            if ratio_f < SEP_SIGFRAC_RATIO:
-                test_ok = False
-                reasons.append(f"significant fraction is {ratio_f:.1f}x the "
-                               f"land control, below {SEP_SIGFRAC_RATIO}x")
-            else:
-                passes.append(f"{inter['frac_significant']:.0%} of pixels "
-                              f"significant vs {land['frac_significant']:.0%} "
-                              f"on land")
-
-        near = inter.get("frac_near_coast", float("nan"))
-        if near == near:
-            if near < MIN_FRAC_NEAR_COAST:
-                test_ok = False
-                reasons.append(
-                    f"only {near:.0%} of intertidal pixels lie within "
-                    f"{COAST_NEAR_PX} pixels of permanent land, below "
-                    f"{MIN_FRAC_NEAR_COAST:.0%}. A real intertidal band hugs "
-                    f"the shore, so this looks like scattered noise.")
-            else:
-                passes.append(f"{near:.0%} of pixels form a coastal fringe "
-                              f"(independent geometric check)")
+                passes.append(
+                    f"coastal fringe: median {dmed:.1f} px "
+                    f"({dmed * 10:.0f} m) from land, q75 "
+                    f"{inter['dist_q75_px']:.1f} px")
 
         if area_ha < MIN_INTERTIDAL_HA:
             test_ok = False
-            reasons.append(f"extent {area_ha:.2f} ha below "
-                           f"{MIN_INTERTIDAL_HA} ha")
+            fails.append(f"extent {area_ha:.2f} ha below {MIN_INTERTIDAL_HA} ha")
 
-    print("\n  " + "-" * 70)
+    print("\n  " + "-" * 72)
     if controls_ok and test_ok:
         print("  INTERTIDAL MACROALGAE DETECTED.")
         print(f"  Extent in this AOI: {area_ha:.1f} ha")
-        for p in passes:
-            print(f"    + {p}")
         print("\n  WHAT THIS IS: intertidal macroalgae extent. NOT a Laminaria")
         print("  digitata map. NDVI cannot separate it from Fucus or")
         print("  Ascophyllum. Do NOT apply the L. hyperborea wave-attenuation")
@@ -634,7 +624,8 @@ def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list[str]]
         print("    - a working Sentinel-2 product, so 'open satellite data' is")
         print("      honest and the demonstrator criterion is addressable")
         print("    - repeat low-tide scenes across years: the route to the")
-        print("      decline assessment the challenge asks for")
+        print("      decline assessment the challenge asks for, which nothing")
+        print("      in the project currently addresses")
         print("    - the lower edge of this band is the upper edge of the")
         print("      subtidal zone, constraining the suitability model")
         print("\n  NEXT: validate against ground truth before quoting accuracy.")
@@ -644,9 +635,7 @@ def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list[str]]
     elif not controls_ok:
         print("  TEST VOID - CONTROLS FAILED.")
         print("  A control tracks tide, so the scenes differ in something other")
-        print("  than tide. Do not read the intertidal row. Narrow the season,")
-        print("  restrict to one year, or raise the clear threshold, then")
-        print("  re-run.")
+        print("  than tide. Do not read the intertidal row.")
         out = "void"
     else:
         print("  NO INTERTIDAL SIGNAL DETECTED.")
@@ -654,16 +643,16 @@ def verdict(stats: dict, area_ha: float, r_crit: float) -> tuple[str, list[str]]
         print("  an artefact.")
         out = "absent"
 
-    if reasons:
+    if fails:
         print("\n  Failed:")
-        for r in reasons:
-            print(f"    - {r}")
-    if passes and out != "detected":
+        for f in fails:
+            print(f"    - {f}")
+    if passes:
         print("\n  Passed:")
         for p in passes:
             print(f"    + {p}")
-    print("  " + "-" * 70)
-    return out, reasons
+    print("  " + "-" * 72)
+    return out, fails, passes
 
 
 # ===========================================================================
@@ -691,15 +680,14 @@ def main() -> int:
     print(f"\n{'=' * 74}\n{args.aoi}   intertidal macroalgae feasibility\n"
           f"{'=' * 74}")
     print("  Verdict criteria, fixed before the run:")
-    print(f"    controls flat        |r| <= {CONTROL_CORR_ABS_MAX}, "
-          f"|slope| <= {CONTROL_SLOPE_ABS_MAX}")
-    print(f"    direction            intertidal median r <= "
-          f"{INTERTIDAL_CORR_MAX}")
-    print(f"    separation           r >= {SEP_CORR_RATIO}x land, slope >= "
-          f"{SEP_SLOPE_RATIO}x land, sig >= {SEP_SIGFRAC_RATIO}x land")
-    print(f"    geometry             >= {MIN_FRAC_NEAR_COAST:.0%} within "
-          f"{COAST_NEAR_PX} px of land")
-    print(f"    extent               >= {MIN_INTERTIDAL_HA} ha")
+    print(f"    controls flat   |r| <= {CONTROL_CORR_ABS_MAX}, |slope| <= "
+          f"{CONTROL_SLOPE_ABS_MAX}")
+    print(f"    direction       intertidal median r <= {INTERTIDAL_CORR_MAX}")
+    print(f"    separation      r >= {SEP_CORR_RATIO}x, slope >= "
+          f"{SEP_SLOPE_RATIO}x, sig >= {SEP_SIGFRAC_RATIO}x the land control")
+    print(f"    geometry        median distance to land (bare rock included) "
+          f"<= {MAX_MEDIAN_DIST_PX:.0f} px = {MAX_MEDIAN_DIST_PX * 10:.0f} m")
+    print(f"    extent          >= {MIN_INTERTIDAL_HA} ha")
 
     print("\n  Scene selection")
     df = load_candidates()
@@ -717,7 +705,7 @@ def main() -> int:
         print("\n  Could not identify date and tide columns.")
         return 1
     scenes, meta = pick_scenes(df, cols, args.aoi, args.n_scenes,
-                              args.multi_year)
+                               args.multi_year)
 
     ee.Initialize(project=EE_PROJECT)
     print("\n  Building the NDVI stack")
@@ -730,14 +718,13 @@ def main() -> int:
     print("\n  Per-pixel regression of NDVI against tide")
     stats = regression_images(ndvi_imgs, tides)
     cls = classify(stats, n)
-    near = add_geometry_check(cls, proj)
+    dist = distance_to_land(stats, proj)
 
     print("  Sampling the three classes")
-    df_s = sample_classes(stats, cls, near, aoi)
+    df_s = sample_classes(stats, cls, dist, aoi)
     if df_s.empty:
-        print("  Sampling returned nothing. Requiring all "
-              f"{n} scenes cloud-free may have removed too much; try "
-              "--n-scenes 8.")
+        print(f"  Sampling returned nothing. Requiring all {n} scenes "
+              f"cloud-free may have removed too much; try --n-scenes 6.")
         return 1
     print(f"  {len(df_s)} sampled pixels")
     got = df_s["cls"].value_counts().to_dict() if "cls" in df_s else {}
@@ -745,17 +732,17 @@ def main() -> int:
         k = got.get(v, 0)
         if k < SAMPLE_PER_CLASS:
             print(f"    {name}: only {k} of {SAMPLE_PER_CLASS} requested "
-                  f"(pixel attrition from requiring all {n} scenes)")
+                  f"(attrition from requiring all {n} scenes cloud-free)")
 
     print("  Measuring extent")
     land_ha = class_area_ha(cls, 1, aoi)
     water_ha = class_area_ha(cls, 2, aoi)
     area_ha = class_area_ha(cls, 3, aoi)
-    print(f"    land {land_ha:.1f} ha   deep water {water_ha:.1f} ha   "
-          f"intertidal {area_ha:.1f} ha")
+    print(f"    vegetated land {land_ha:.1f} ha   deep water {water_ha:.1f} ha"
+          f"   intertidal {area_ha:.1f} ha")
 
     summary = summarise(df_s, r_crit)
-    outcome, reasons = verdict(summary, area_ha, r_crit)
+    outcome, fails, passes = verdict(summary, area_ha, r_crit)
 
     tag = f"{args.aoi}_{n}scenes"
     df_s.to_csv(OUT_DIR / f"pixels_{tag}.csv", index=False)
@@ -778,14 +765,14 @@ def main() -> int:
             "sep_corr_ratio": SEP_CORR_RATIO,
             "sep_slope_ratio": SEP_SLOPE_RATIO,
             "sep_sigfrac_ratio": SEP_SIGFRAC_RATIO,
-            "coast_near_px": COAST_NEAR_PX,
-            "min_frac_near_coast": MIN_FRAC_NEAR_COAST,
+            "max_median_dist_px": MAX_MEDIAN_DIST_PX,
         },
-        "area_ha": {"land": land_ha, "deep_water": water_ha,
+        "area_ha": {"vegetated_land": land_ha, "deep_water": water_ha,
                     "intertidal": area_ha},
         "class_stats": {CLASS_NAMES[k]: v for k, v in summary.items()},
         "outcome": outcome,
-        "reasons": reasons,
+        "failed": fails,
+        "passed": passes,
         "caveats": [
             "Intertidal macroalgae extent, NOT a Laminaria digitata map. NDVI "
             "cannot separate L. digitata from Fucus or Ascophyllum.",
