@@ -267,11 +267,111 @@ def shift_search(fw: FetchWindow, xs: np.ndarray, ys: np.ndarray,
     return results
 
 
+MIN_GAIN_PP = 3.0   # below this the optimum is flat and means nothing
+
+
 def verdict(results: list[dict]) -> tuple[bool, dict, dict]:
+    """Pass unless a shift both beats zero MATERIALLY and lands outside a pixel.
+
+    BUG FIXED 2026-07-28, found by a real run. The first version keyed the
+    verdict on the offset alone, so a best shift that beat zero by 0.96 of a
+    percentage point - i.e. noise across 121 candidates - was reported as a
+    FAIL, in the same breath as the code printing "treat as a pass". A shift
+    search over a flat surface returns whichever cell won the coin toss. The
+    gain has to clear MIN_GAIN_PP before the argmax means anything, and the
+    self-test measured what a genuine error looks like: 20.3 pp.
+    """
     best = max(results, key=lambda r: r["edge_agree_pct"])
     zero = next(r for r in results if r["dx_m"] == 0.0 and r["dy_m"] == 0.0)
     offset = (best["dx_m"] ** 2 + best["dy_m"] ** 2) ** 0.5
-    return offset <= SHIFT_STEP_M, best, zero
+    gain = best["edge_agree_pct"] - zero["edge_agree_pct"]
+    displaced = (offset > SHIFT_STEP_M) and (gain >= MIN_GAIN_PP)
+    return (not displaced), best, zero
+
+
+
+# ---------------------------------------------------------------------------
+# 3b. Why do they disagree? Generalisation and displacement look different.
+# ---------------------------------------------------------------------------
+
+def diagnose(is_water: np.ndarray, valid: np.ndarray, has_fetch: np.ndarray,
+             n_aoi: int, grid: int, step_m: float) -> None:
+    """Separate a coarse coastline from a displaced one.
+
+    A DISPLACEMENT moves everything one way, so the errors pile up on one side
+    of the land and are balanced overall: points that fall off the water gain
+    what points that fall onto it lose. A COARSE COASTLINE is a dilation: the
+    fetch grid calls water everything within a pixel or so of water, errors
+    are one-sided, and their direction is uniform around every shore.
+
+    Two readouts, both from the sample grid already in hand:
+      1. how far into the land, in grid steps, fetch still claims water;
+      2. which way the nearest water lies from each of those points.
+    """
+    per = grid * grid
+    depth_hist: dict[int, list[int]] = {}
+    dir_counts = {"N": 0, "E": 0, "S": 0, "W": 0}
+
+    for a in range(n_aoi):
+        s = a * per
+        w = is_water[s:s + per].reshape(grid, grid)
+        f = has_fetch[s:s + per].reshape(grid, grid)
+
+        # multi-source BFS: distance from every cell to the nearest water cell
+        dist = np.full((grid, grid), -1, dtype=int)
+        dist[w] = 0
+        frontier = w.copy()
+        for d in range(1, 8):
+            nxt = np.zeros_like(frontier)
+            nxt[1:, :] |= frontier[:-1, :]
+            nxt[:-1, :] |= frontier[1:, :]
+            nxt[:, 1:] |= frontier[:, :-1]
+            nxt[:, :-1] |= frontier[:, 1:]
+            nxt &= (dist < 0)
+            if not nxt.any():
+                break
+            dist[nxt] = d
+            frontier = nxt
+
+        for d in range(1, 8):
+            sel = (dist == d)
+            if sel.any():
+                depth_hist.setdefault(d, [0, 0])
+                depth_hist[d][0] += int(sel.sum())
+                depth_hist[d][1] += int((sel & f).sum())
+
+        # direction from each wrongly-wet land point toward the nearest water
+        rr, cc = np.where(f & ~w & (dist > 0))
+        for r, c in zip(rr, cc):
+            d = dist[r, c]
+            if r > 0 and dist[r - 1, c] == d - 1:
+                dir_counts["N"] += 1
+            elif r < grid - 1 and dist[r + 1, c] == d - 1:
+                dir_counts["S"] += 1
+            elif c > 0 and dist[r, c - 1] == d - 1:
+                dir_counts["W"] += 1
+            elif c < grid - 1 and dist[r, c + 1] == d - 1:
+                dir_counts["E"] += 1
+
+    print("\n  land points claimed as water by the fetch grid, by depth inland")
+    print(f"    {'steps from water':<20}{'~metres':>9}{'n land':>9}"
+          f"{'fetch says water':>19}")
+    for d in sorted(depth_hist):
+        n, k = depth_hist[d]
+        print(f"    {d:<20}{d * step_m:>9.0f}{n:>9}{100.0 * k / n:>18.1f}%")
+    print("    A coarse coastline decays fast: high at 1 step, near zero by 3.")
+    print("    A displacement stays high for 2-3 steps on one side only.")
+
+    tot = sum(dir_counts.values()) or 1
+    print("\n  direction of the nearest water from those points")
+    print("    " + "   ".join(f"{k} {100.0 * v / tot:4.1f}%"
+                              for k, v in dir_counts.items()))
+    spread = max(dir_counts.values()) / tot
+    if spread > 0.45:
+        print("    >>> CONCENTRATED in one direction. That is a displacement.")
+    else:
+        print("    >>> Spread across all four. That is dilation of the")
+        print("    >>> coastline, not a shift of the grid.")
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +489,10 @@ def main() -> int:
     ap.add_argument("--grid", type=int, default=40,
                     help="grid side per AOI. 40 gives ~175 m spacing, which is\n"
                          "what it takes to resolve a one-pixel offset.")
+    ap.add_argument("--diagnose", action="store_true",
+                    help="explain the disagreement: coarse coastline or shift")
+    ap.add_argument("--cache", action="store_true",
+                    help="reuse the saved mask samples instead of calling GEE")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
@@ -407,7 +511,13 @@ def main() -> int:
             labels.append(name)
     print(f"sample points: {len(pts)} across {len(AOIS)} AOIs\n")
 
-    if args.landmask:
+    cache_p = OUT_DIR / "mask_samples.csv"
+    if args.cache and cache_p.exists():
+        print(f"reference mask: cached from {cache_p}")
+        with cache_p.open(encoding="utf-8") as fh:
+            water = [None if r["water"] == "" else r["water"] == "True"
+                     for r in csv.DictReader(fh)]
+    elif args.landmask:
         print(f"reference mask: {args.landmask}")
         water = water_from_raster(args.landmask, pts)
     else:
@@ -418,6 +528,13 @@ def main() -> int:
             print(f"  Earth Engine route failed: {exc}")
             print("  Re-run with --landmask pointing at a local water raster.")
             return 2
+
+    if not (args.cache and cache_p.exists()):
+        with cache_p.open("w", newline="", encoding="utf-8") as fh:
+            wr = csv.writer(fh)
+            wr.writerow(["aoi", "lon", "lat", "water"])
+            for lab, (lon, lat), wv in zip(labels, pts, water):
+                wr.writerow([lab, lon, lat, "" if wv is None else wv])
 
     valid = np.array([w is not None for w in water])
     is_water = np.array([bool(w) if w is not None else False for w in water])
@@ -481,6 +598,12 @@ def main() -> int:
         print("  explanation: that the reference mask is wrong. A clean offset")
         print("  of a round number of pixels in one direction points at the")
         print("  datum; a diffuse or diagonal result points at the mask.")
+
+    if args.diagnose:
+        step_m = (AOIS["sherkin_baltimore"][2] - AOIS["sherkin_baltimore"][0]) \
+            / args.grid * 111320.0 * 0.622
+        diagnose(is_water, valid, fw.has_value(xs, ys),
+                 len(AOIS), args.grid, step_m)
 
     path = OUT_DIR / "mask_alignment_shifts.csv"
     with path.open("w", newline="", encoding="utf-8") as fh:
