@@ -295,7 +295,8 @@ def verdict(results: list[dict]) -> tuple[bool, dict, dict]:
 # ---------------------------------------------------------------------------
 
 def diagnose(is_water: np.ndarray, valid: np.ndarray, has_fetch: np.ndarray,
-             n_aoi: int, grid: int, step_m: float) -> None:
+             n_aoi: int, grid: int, step_m: float,
+             quiet: bool = False) -> float:
     """Separate a coarse coastline from a displaced one.
 
     A DISPLACEMENT moves everything one way, so the errors pile up on one side
@@ -310,7 +311,9 @@ def diagnose(is_water: np.ndarray, valid: np.ndarray, has_fetch: np.ndarray,
     """
     per = grid * grid
     depth_hist: dict[int, list[int]] = {}
-    dir_counts = {"N": 0, "E": 0, "S": 0, "W": 0}
+    dir_counts = {"N": 0.0, "E": 0.0, "S": 0.0, "W": 0.0}
+    resultant = [0.0, 0.0]
+    n_dir = [0]
 
     for a in range(n_aoi):
         s = a * per
@@ -340,19 +343,49 @@ def diagnose(is_water: np.ndarray, valid: np.ndarray, has_fetch: np.ndarray,
                 depth_hist[d][0] += int(sel.sum())
                 depth_hist[d][1] += int((sel & f).sum())
 
-        # direction from each wrongly-wet land point toward the nearest water
+        # Direction from each wrongly-wet land point toward the nearest water.
+        #
+        # TWO BUGS FIXED HERE, both found by a real run, both mine.
+        #
+        # (1) ORDER BIAS. The first version was an if/elif chain testing one
+        #     direction after another and stopping at the first hit. Most
+        #     coastal cells have two or three neighbours nearer the water, so
+        #     whichever direction happened to be tested first collected them
+        #     all. The histogram was measuring my chain order, not geometry.
+        #     Now every neighbour at d-1 gets an equal fraction of one vote.
+        #
+        # (2) INVERTED LABELS. grid_points() lays latitude out from ymin
+        #     upward, so row+1 is NORTH here - the opposite of a raster, where
+        #     row+1 is south. The first version used the raster convention, so
+        #     the reported N and S were swapped.
+        #
+        # The histogram is for reading; the verdict is the mean resultant
+        # length R of the unit vectors, which is standard circular statistics.
+        # Dilation scatters the vectors around every shore and they cancel, so
+        # R goes to 0. A displacement points them all one way, so R goes to 1.
         rr, cc = np.where(f & ~w & (dist > 0))
         for r, c in zip(rr, cc):
             d = dist[r, c]
+            vecs = []
+            if r < grid - 1 and dist[r + 1, c] == d - 1:
+                vecs.append(("N", 0.0, 1.0))
             if r > 0 and dist[r - 1, c] == d - 1:
-                dir_counts["N"] += 1
-            elif r < grid - 1 and dist[r + 1, c] == d - 1:
-                dir_counts["S"] += 1
-            elif c > 0 and dist[r, c - 1] == d - 1:
-                dir_counts["W"] += 1
-            elif c < grid - 1 and dist[r, c + 1] == d - 1:
-                dir_counts["E"] += 1
+                vecs.append(("S", 0.0, -1.0))
+            if c < grid - 1 and dist[r, c + 1] == d - 1:
+                vecs.append(("E", 1.0, 0.0))
+            if c > 0 and dist[r, c - 1] == d - 1:
+                vecs.append(("W", -1.0, 0.0))
+            if not vecs:
+                continue
+            share = 1.0 / len(vecs)
+            for label, vx, vy in vecs:
+                dir_counts[label] += share
+            resultant[0] += sum(v[1] for v in vecs) * share
+            resultant[1] += sum(v[2] for v in vecs) * share
+            n_dir[0] += 1
 
+    if quiet:
+        pass
     print("\n  land points claimed as water by the fetch grid, by depth inland")
     print(f"    {'steps from water':<20}{'~metres':>9}{'n land':>9}"
           f"{'fetch says water':>19}")
@@ -362,16 +395,24 @@ def diagnose(is_water: np.ndarray, valid: np.ndarray, has_fetch: np.ndarray,
     print("    A coarse coastline decays fast: high at 1 step, near zero by 3.")
     print("    A displacement stays high for 2-3 steps on one side only.")
 
-    tot = sum(dir_counts.values()) or 1
+    tot = sum(dir_counts.values()) or 1.0
+    if quiet:
+        pass
     print("\n  direction of the nearest water from those points")
     print("    " + "   ".join(f"{k} {100.0 * v / tot:4.1f}%"
                               for k, v in dir_counts.items()))
-    spread = max(dir_counts.values()) / tot
-    if spread > 0.45:
-        print("    >>> CONCENTRATED in one direction. That is a displacement.")
+    n = max(n_dir[0], 1)
+    rx, ry = resultant[0] / n, resultant[1] / n
+    R = (rx * rx + ry * ry) ** 0.5
+    print(f"    mean resultant length R = {R:.3f}"
+          f"   (vector {rx:+.2f}, {ry:+.2f})")
+    if R > 0.40:
+        print("    >>> CONCENTRATED. Consistent with a displacement.")
     else:
-        print("    >>> Spread across all four. That is dilation of the")
-        print("    >>> coastline, not a shift of the grid.")
+        print("    >>> The vectors cancel. The fetch grid is not shifted; its")
+        print("    >>> coastline is coarser than the satellite mask, so it")
+        print("    >>> spills over land in every direction at once.")
+    return R
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +464,8 @@ def _run_pair(land_p: Path, fetch_p: Path, grid: int = 45):
     with rasterio.open(land_p) as t:
         b = t.bounds
         xs_p = np.linspace(b.left + 3000, b.right - 3000, grid)
-        ys_p = np.linspace(b.top - 3000, b.bottom + 3000, grid)
+        ys_p = np.linspace(b.bottom + 3000, b.top - 3000, grid)  # south->north,
+        #                                            matching grid_points()
         gx, gy = np.meshgrid(xs_p, ys_p)
         gx, gy = gx.ravel(), gy.ravel()
         lon, lat = warp_transform(t.crs, WGS84, list(gx), list(gy))
@@ -438,7 +480,9 @@ def _run_pair(land_p: Path, fetch_p: Path, grid: int = 45):
         fw._left, fw._top = f.bounds.left, f.bounds.top
     res = shift_search(fw, gx, gy, is_water, valid, edge)
     ok, best, zero = verdict(res)
-    return ok, best, zero, int(edge.sum())
+    R = diagnose(is_water, valid, fw.has_value(gx, gy), 1, grid, 200.0,
+                 quiet=True)
+    return ok, best, zero, int(edge.sum()), R
 
 
 def selftest() -> int:
@@ -447,14 +491,14 @@ def selftest() -> int:
     tmp = Path(tempfile.mkdtemp())
 
     land_p, fetch_p = _synthetic_pair(tmp, (0.0, 0.0))
-    ok, best, zero, n_edge = _run_pair(land_p, fetch_p)
+    ok, best, zero, n_edge, R_clean = _run_pair(land_p, fetch_p)
     print(f"  case A  no injected error    -> best ({best['dx_m']:+.0f},"
           f" {best['dy_m']:+.0f}) m   coastline agreement"
           f" {best['edge_agree_pct']:.1f}%   n_edge={n_edge}")
     assert ok and best["dx_m"] == 0 and best["dy_m"] == 0, best
 
     land_p, fetch_p = _synthetic_pair(tmp, (600.0, -400.0))
-    ok, best, zero, n_edge = _run_pair(land_p, fetch_p)
+    ok, best, zero, n_edge, R_shift = _run_pair(land_p, fetch_p)
     drop = zero["edge_agree_pct"]
     print(f"  case B  injected (+600,-400) -> best ({best['dx_m']:+.0f},"
           f" {best['dy_m']:+.0f}) m   coastline agreement"
@@ -468,6 +512,9 @@ def selftest() -> int:
         "from a clean layer - the test still lacks power")
     print(f"  discriminating power         -> "
           f"{best['edge_agree_pct'] - drop:.1f} pp between right and wrong")
+    print(f"  direction test               -> R={R_clean:.3f} clean,"
+          f" R={R_shift:.3f} displaced")
+    assert R_clean < 0.40 <= R_shift, (R_clean, R_shift)
 
     print("\nSELFTEST PASSED. The shift search recovers a known georeferencing")
     print("error in metres and in direction, and reports a clean raster as")
