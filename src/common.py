@@ -46,11 +46,22 @@ AOIS: dict[str, list[float]] = {
     # L. hyperborea - so the Norwegian wave-attenuation coefficients must not
     # be applied to vegetation pixels detected in this box.
     "inner_roaringwater": [-9.52, 51.49, -9.44, 51.54],
+
+    # VALIDATION SITE, locked 2026-07-29. Kenmare River SAC, same SW Atlantic
+    # coast and wave regime as West Cork. NPWS Article 17 maps 65 polygons of
+    # "Laminaria-dominated reef" here, ~720 ha inside this box, from dive and
+    # video survey. This is the ONLY AOI where the right answer is known, so
+    # the suitability model is trained and validated here and APPLIED at
+    # Roaringwater. Coverage checked 2026-07-29 on a 100 m grid: INFOMAR depth
+    # 66%, wave fetch 79% - better than all three West Cork boxes.
+    "kenmare_river": [-9.93, 51.75, -9.78, 51.81],
 }
+
 
 PRIMARY_AOI = "sherkin_baltimore"
 
-# Expected wave-exposure ordering across the three AOIs. This is a PREDICTION
+# Expected wave-exposure ordering across the three WEST CORK AOIs (kenmare_river
+# is excluded: it is the validation site, not part of this ordering test).
 # from coastal geometry, not a measurement: mizen_outer faces the open Atlantic,
 # sherkin_baltimore is partly screened by Sherkin and Cape Clear, and
 # inner_roaringwater sits behind the island chain. Any exposure layer we adopt
