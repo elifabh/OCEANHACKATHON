@@ -164,53 +164,83 @@ def euphotic_depth(kd, fraction=EUPHOTIC_FRACTION):
 # Catalogue discovery - never hard-code a dataset id
 # ---------------------------------------------------------------------------
 
-def describe(region_hint: str = "atl") -> int:
-    """List Copernicus Marine datasets that carry KD490 for our region."""
+def describe(keyword: str = "transp") -> int:
+    """Search the whole Copernicus Marine catalogue for datasets by keyword.
+
+    Searches DATASET ids, not product titles. The first version filtered on
+    product_id containing "OCEANCOLOUR" and a region hint, which found the
+    Atlantic 1 km transparency datasets but missed the Sentinel-2
+    High-Resolution Ocean Colour products entirely, because those sit under
+    different product names and under the IBI (Iberian-Biscay-Irish) region
+    rather than ATL. A keyword search over dataset ids has no such blind spot.
+
+    Useful keywords:
+        transp   transparency - this is where KD490 and Secchi depth live
+        tur      turbidity, including the Sentinel-2 100 m HR-OC products
+        optics   inherent optical properties
+        300m     anything at 300 m
+        100m     anything at 100 m
+    """
     try:
         import copernicusmarine as cm
     except ImportError:
-        print("  copernicusmarine is not installed:")
-        print("    pip install copernicusmarine")
+        print("  copernicusmarine is not installed:  pip install copernicusmarine")
         return 2
 
-    print("  fetching the Copernicus Marine catalogue (this takes a minute) ...")
+    print(f"  searching the catalogue for dataset ids containing "
+          f"'{keyword}' (takes a minute) ...")
     try:
         cat = cm.describe()
     except Exception as exc:
         print(f"  catalogue request failed: {exc}")
-        print("  If this is an authentication error, run:  copernicusmarine login")
+        print("  If this is an authentication error:  copernicusmarine login")
         return 2
 
     hits = []
     for prod in getattr(cat, "products", []) or []:
         pid = getattr(prod, "product_id", "") or ""
         title = getattr(prod, "title", "") or ""
-        blob = f"{pid} {title}".upper()
-        if "OCEANCOLOUR" not in blob and "OCEAN COLOUR" not in blob.upper():
-            continue
-        if region_hint.upper() not in pid.upper():
-            continue
         for ds in getattr(prod, "datasets", []) or []:
             did = getattr(ds, "dataset_id", "") or ""
-            hits.append((pid, title, did))
+            if keyword.lower() in did.lower():
+                hits.append((pid, title, did))
 
     if not hits:
-        print(f"  nothing matched region hint '{region_hint}'. Try --describe-region glo")
+        print(f"  nothing matched '{keyword}'.")
+        print("  Try: transp | tur | optics | 300m | 100m")
         return 1
-    print(f"\n  {len(hits)} candidate dataset(s):\n")
+
+    def res_rank(did):
+        for tag, m in (("100m", 100), ("300m", 300), ("1km", 1000),
+                       ("4km", 4000)):
+            if tag in did.lower():
+                return m
+        return 9999
+
+    hits.sort(key=lambda h: (res_rank(h[2]), h[2]))
+    print(f"\n  {len(hits)} dataset(s), finest resolution first:\n")
     seen = set()
     for pid, title, did in hits:
+        m = res_rank(did)
+        note = ""
+        if m <= 300:
+            note = "   <-- fine enough to vary INSIDE an AOI"
+        elif m <= 1000:
+            note = "   <-- ~70 pixels per AOI: good between AOIs, blocky within"
+        else:
+            note = "   <-- TOO COARSE, an AOI would be one or two pixels"
+        print(f"  {did}{note}")
         if pid not in seen:
-            print(f"  {pid}\n    {title}")
+            print(f"      product: {pid}")
             seen.add(pid)
-        mark = "  <-- 300 m, finest for our scale" if "300m" in did.lower() else ""
-        print(f"      {did}{mark}")
-    print("\n  Choose one carrying KD490 at the finest resolution offered, then:")
-    print("    python src/light_layer.py --fetch --dataset-id <id> --aoi <aoi>")
-    print("\n  >>> Prefer a 300 m OLCI dataset over a 1 km or 4 km one. Our grid")
-    print("  >>> is 50 m; at 4 km a whole AOI would be a single pixel and the")
-    print("  >>> covariate would be a constant, which is worse than useless -")
-    print("  >>> it would look like a variable and behave like an intercept.")
+    print("\n  Then:")
+    print("    python src/light_layer.py --fetch --dataset-id <id>")
+    print("\n  >>> Check the VARIABLE name too. KD490 lives in 'transp'")
+    print("  >>> datasets; the Sentinel-2 high-resolution products carry TUR")
+    print("  >>> (turbidity) or SPM instead, which are related to clarity but")
+    print("  >>> are NOT the attenuation coefficient and cannot go straight")
+    print("  >>> into exp(-Kd*z). If you use one of those, say so and treat")
+    print("  >>> the result as a clarity INDEX, not as light.")
     return 0
 
 
@@ -485,9 +515,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Light at the seabed from satellite water clarity.")
     ap.add_argument("--describe", action="store_true",
-                    help="list Copernicus Marine datasets carrying KD490")
-    ap.add_argument("--describe-region", default="atl",
-                    help="region hint for --describe (default atl)")
+                    help="search the catalogue for datasets by keyword")
+    ap.add_argument("--keyword", default="transp",
+                    help="dataset-id keyword for --describe (default transp; "
+                         "try tur, optics, 300m, 100m)")
     ap.add_argument("--fetch", action="store_true")
     ap.add_argument("--dataset-id")
     ap.add_argument("--variable", default="KD490")
@@ -502,7 +533,7 @@ def main() -> int:
     if args.selftest:
         return selftest()
     if args.describe:
-        return describe(args.describe_region)
+        return describe(args.keyword)
     if args.report:
         return report(args.grid)
     if args.fetch:
