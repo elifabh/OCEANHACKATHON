@@ -131,30 +131,63 @@ ACCEPTANCE = {
 # Logistic regression, IRLS with ridge
 # ---------------------------------------------------------------------------
 
-def fit_logistic(X: np.ndarray, y: np.ndarray, ridge: float = RIDGE):
-    """Newton / IRLS fit. X has no intercept column; one is added here.
+def fit_logistic(X: np.ndarray, y: np.ndarray, ridge: float = RIDGE,
+                 sample_weight: np.ndarray | None = None,
+                 add_intercept: bool = True,
+                 unpenalised: tuple = ()):
+    """Newton / IRLS fit, optionally weighted.
 
     The ridge term is small and exists for one reason: with a predictor that
     separates the classes almost perfectly the unpenalised likelihood has no
     finite maximum and the coefficients run away to infinity. That is exactly
     our situation - depth alone reaches AUC 0.95 - so an unpenalised fit would
     either fail to converge or return meaningless magnitudes.
+
+    sample_weight
+        Per-row weight in the likelihood. Used to give every training SITE
+        equal influence: without it a site contributing 30,000 cells outweighs
+        one contributing 2,800 by more than ten to one, and the fitted model is
+        effectively that site's model.
+    add_intercept
+        Set False when the caller supplies its own intercept columns, e.g.
+        one-hot site dummies.
+    unpenalised
+        Column indices of X that the ridge must not shrink. Intercept-like
+        columns belong here: shrinking a site's baseline towards zero would
+        quietly reintroduce the pooling the dummies exist to remove.
     """
     n, k = X.shape
-    Xd = np.hstack([np.ones((n, 1)), X])
-    beta = np.zeros(k + 1)
-    pen = ridge * np.eye(k + 1)
-    pen[0, 0] = 0.0                      # never penalise the intercept
+    Xd = np.hstack([np.ones((n, 1)), X]) if add_intercept else X
+    kk = Xd.shape[1]
+    beta = np.zeros(kk)
+
+    pen = ridge * np.eye(kk)
+    if add_intercept:
+        pen[0, 0] = 0.0
+        for c in unpenalised:
+            pen[c + 1, c + 1] = 0.0
+    else:
+        for c in unpenalised:
+            pen[c, c] = 0.0
+
+    sw = np.ones(n) if sample_weight is None else np.asarray(
+        sample_weight, dtype=float)
+    if sw.shape != (n,):
+        raise ValueError(f"sample_weight must have shape ({n},), got {sw.shape}")
 
     for _ in range(MAX_IRLS):
         eta = Xd @ beta
         p = 1.0 / (1.0 + np.exp(-np.clip(eta, -30, 30)))
-        w = np.clip(p * (1.0 - p), 1e-8, None)
-        z = eta + (y - p) / w
+        w = np.clip(p * (1.0 - p), 1e-8, None) * sw
+        # z uses the UNWEIGHTED variance, because the sample weight multiplies
+        # the likelihood contribution, it does not change the Bernoulli
+        # variance of an observation. Folding sw into the denominator here
+        # would silently rescale the working response.
+        z = eta + (y - p) / np.clip(p * (1.0 - p), 1e-8, None)
         WX = Xd * w[:, None]
         H = Xd.T @ WX + pen
         # Newton step for the PENALISED likelihood reduces exactly to this:
-        #   (X'WX + P) b_new = X'Wz    with   z = eta + (y - p)/w
+        #   (X'WX + P) b_new = X'Wz    with   z = eta + (y - p)/var
         # so no separate penalty term appears on the right-hand side.
         g = Xd.T @ (w * z)
         try:
@@ -317,6 +350,38 @@ def selftest() -> int:
     assert auc(ysep, predict_proba(bsep, Xsep)) > 0.99
     print(f"  separable data: finite coefficients ({bsep[1]:.1f}), AUC "
           f"{auc(ysep, predict_proba(bsep, Xsep)):.3f}  ok")
+
+    # --- sample weights must actually change the fit --------------------
+    # Two groups with OPPOSITE relationships. Weighting one up must move the
+    # coefficient towards it. If weights were ignored the two fits below would
+    # be identical, and site-balancing would be silently doing nothing.
+    g1 = rng.normal(size=(600, 1))
+    g2 = rng.normal(size=(600, 1))
+    yw = np.concatenate([(g1[:, 0] > 0).astype(float),
+                         (g2[:, 0] < 0).astype(float)])
+    Xw = np.vstack([g1, g2])
+    w_first = np.concatenate([np.full(600, 10.0), np.full(600, 1.0)])
+    w_second = np.concatenate([np.full(600, 1.0), np.full(600, 10.0)])
+    b1 = fit_logistic(Xw, yw, sample_weight=w_first)
+    b2 = fit_logistic(Xw, yw, sample_weight=w_second)
+    assert b1[1] > 0 and b2[1] < 0, (b1, b2)
+    assert abs(fit_logistic(Xw, yw)[1]) < min(abs(b1[1]), abs(b2[1]))
+    print(f"  sample weights change the fit: {b1[1]:+.2f} vs {b2[1]:+.2f}, "
+          f"unweighted {fit_logistic(Xw, yw)[1]:+.2f}  ok")
+
+    # --- add_intercept=False + unpenalised columns ----------------------
+    D = np.zeros((400, 2))
+    D[:200, 0] = 1.0
+    D[200:, 1] = 1.0
+    Z = rng.normal(size=(400, 1))
+    yd = (np.where(D[:, 0] > 0, -1.5, 1.5) + 2.0 * Z[:, 0]
+          + rng.normal(0, 0.3, 400) > 0).astype(float)
+    bd = fit_logistic(np.hstack([D, Z]), yd, add_intercept=False,
+                      unpenalised=(0, 1))
+    assert bd[0] < bd[1], bd          # group 1 has the lower baseline
+    assert bd[2] > 1.0, bd            # the slope survives
+    print(f"  own intercept columns: baselines {bd[0]:+.2f} / {bd[1]:+.2f}, "
+          f"slope {bd[2]:+.2f}  ok")
 
     # --- AUC direction ----------------------------------------------------
     yy = np.array([1, 1, 0, 0], dtype=float)

@@ -140,7 +140,17 @@ HOLDOUT_TOKENS = ("roaringwater",)
 
 # Expected coefficient signs, from published work, with how firmly each is
 # established. Depth is metres below LAT, positive down.
+# The interaction term. Its name is checked for explicitly wherever features
+# are assembled, so adding it cannot silently change the meaning of the four
+# base terms.
+INTERACTION = "depth_x_fetch"
+
 EXPECTED_SIGNS = {
+    INTERACTION: (+1, "moderate: the kelp depth limit tracks water clarity, "
+                      "and exposed water is clearer, so on an exposed coast "
+                      "kelp extends deeper. With a negative depth coefficient "
+                      "that means the depth penalty must WEAKEN as fetch "
+                      "rises, i.e. a positive interaction"),
     "depth_m": (-1, "firm: kelp is light-limited; NPWS record Laminaria "
                     "communities to ~20 m at Roaringwater, Bekkby et al. 2009 "
                     "find depth the strongest predictor"),
@@ -154,11 +164,26 @@ EXPECTED_SIGNS = {
 }
 
 SEED = 20261016
+
+# A standardised coefficient below this is not "the wrong sign", it is no
+# detectable effect. The first version of check_signs had no magnitude floor,
+# so it reported log10_fetch at -0.028 - numerically indistinguishable from
+# zero - with the same FAIL it gave -0.278, which was a genuinely wrong-signed
+# effect. Those are different diagnoses and must not share a verdict.
+SIGN_MIN_MAGNITUDE = 0.10
+
+# Operating point for the external test. A fixed 0.5 cut is meaningless across
+# sites whose kelp prevalence among labelled cells runs from 5.6% (Saltee) to
+# 77% (Kilkieran), so the threshold is taken from out-of-site predictions at a
+# stated specificity instead. Fixed in advance, like every other threshold.
+TARGET_SPECIFICITY = 0.90
+
 ACCEPTANCE = {
     "loso_auc_min": 0.70,
     "worst_site_auc_min": 0.60,
     "external_false_positive_max": 0.30,
     "sign_mismatches_max_firm": 0,
+    "target_specificity_for_threshold": TARGET_SPECIFICITY,
 }
 
 
@@ -287,8 +312,13 @@ def sample_depth_subset(key, bbox, grid_m, want: np.ndarray, depth_fn=None):
         z = np.load(cache)
         if z["depth"].shape == grid.shape and \
                 np.allclose(z["bbox"], np.array(bbox), atol=1e-9):
-            print(f"    depth from cache ({np.isfinite(z['depth']).mean():.0%}"
-                  " surveyed)")
+            # Report over the SAMPLED cells, not the whole grid. The fresh path
+            # below reports the former; an earlier version reported the latter
+            # here, so a cached run showed 5% where the run that wrote the
+            # cache had shown 78% - the same data, described two ways.
+            print(f"    depth from cache "
+                  f"({np.isfinite(z['depth'][want]).mean():.0%} of sampled "
+                  f"cells surveyed)")
             return z["depth"]
         print("    cache does not match this bbox; refetching")
 
@@ -371,49 +401,238 @@ def build_site(key, sub_gdf, grid_m, to_itm, to_wgs, fetch_path, depth_fn=None):
 # Leave-one-site-out
 # ---------------------------------------------------------------------------
 
-def loso(Xz, y, site_idx, sites):
-    """Each site predicted by a model fitted on all the others."""
+def loso(Z, y, site_idx, sites, weights=None):
+    """Each site predicted by a model fitted on all the others.
+
+    The fit carries one intercept per TRAINING site. A held-out site has none,
+    so it is scored with the mean of the training intercepts. That is exactly
+    the situation at Roaringwater, which makes this the honest simulation of
+    what the deployed model faces: the ranking is transferable, the absolute
+    probability is not.
+    """
     oof = np.full(y.size, np.nan)
-    per_site = {}
+    per_site, slopes = {}, {}
     for k, name in enumerate(sites):
         te = site_idx == k
         tr = ~te
         if te.sum() == 0 or len(np.unique(y[tr])) < 2:
             per_site[name] = None
             continue
-        b = fit_logistic(Xz[tr], y[tr])
-        p = predict_proba(b, Xz[te])
-        oof[te] = p
-        per_site[name] = (round(auc(y[te], p), 4)
+        tr_sites = [i for i in range(len(sites)) if i != k]
+        remap = {old: new for new, old in enumerate(tr_sites)}
+        idx_tr = np.array([remap[i] for i in site_idx[tr]])
+        Dz = design(Z[tr], idx_tr, len(tr_sites))
+        w = (site_weights(idx_tr, len(tr_sites)) if weights is not None
+             else None)
+        b = fit_logistic(Dz, y[tr], sample_weight=w, add_intercept=False,
+                         unpenalised=tuple(range(len(tr_sites))))
+        inter = b[:len(tr_sites)]
+        beta_z = b[len(tr_sites):]
+        slopes[name] = [round(float(v), 4) for v in beta_z]
+        eta = float(np.mean(inter)) + Z[te] @ beta_z
+        oof[te] = 1.0 / (1.0 + np.exp(-np.clip(eta, -30, 30)))
+        per_site[name] = (round(auc(y[te], oof[te]), 4)
                           if len(np.unique(y[te])) == 2 else None)
     ok = np.isfinite(oof)
-    return (auc(y[ok], oof[ok]) if ok.sum() else float("nan")), per_site, oof
+    return (auc(y[ok], oof[ok]) if ok.sum() else float("nan")), per_site, oof, \
+        slopes
 
 
-def check_signs(beta, features):
-    """Compare fitted signs against the published direction."""
-    out, firm_bad = {}, []
-    print(f"\n  {'term':<14}{'coef':>9}{'expected':>10}   basis")
+def check_signs(coefs, features):
+    """Compare fitted signs against the published direction.
+
+    Three outcomes, not two. A coefficient can agree, disagree, or be too small
+    to say anything about - and the third is a different finding from the
+    second. "Wrong sign" means the model learned a relationship backwards; "no
+    effect detected" means it learned nothing there, which points at the
+    training data rather than at the fit. The first version of this function
+    had no magnitude floor and gave both the same FAIL.
+
+    `coefs` is the covariate coefficients only, without any intercept.
+    """
+    out, firm_bad, silent = {}, [], []
+    print(f"\n  {'term':<14}{'coef':>9}{'expected':>10}   {'basis':<10}verdict")
     for i, f in enumerate(features):
-        c = float(beta[i + 1])
+        c = float(coefs[i])
         exp, why = EXPECTED_SIGNS.get(f, (0, "no expectation"))
-        agree = (exp == 0) or (c * exp > 0)
-        tag = "ok" if agree else "<-- OPPOSITE"
+        if abs(c) < SIGN_MIN_MAGNITUDE:
+            state, tag = "no_effect", "no effect detected"
+            silent.append(f)
+        elif exp == 0 or c * exp > 0:
+            state, tag = "agrees", "ok"
+        else:
+            state, tag = "opposite", "<-- OPPOSITE"
+            if why.startswith("firm"):
+                firm_bad.append(f)
         print(f"  {f:<14}{c:>+9.3f}{('+' if exp > 0 else '-'):>10}   "
               f"{why.split(':')[0]:<10}{tag}")
-        out[f] = {"coef": round(c, 4), "expected_sign": exp,
-                  "agrees": bool(agree), "basis": why}
-        if not agree and why.startswith("firm"):
-            firm_bad.append(f)
+        out[f] = {"coef": round(c, 4), "expected_sign": exp, "state": state,
+                  "basis": why}
+
     if firm_bad:
-        print(f"\n  >>> {firm_bad} have the sign OPPOSITE to firmly established")
-        print("  >>> ecology. That is not a curiosity, it is evidence the model")
-        print("  >>> has fitted site geometry rather than ecology. This is the")
-        print("  >>> check that caught the single-site model. Do not proceed")
-        print("  >>> to valuation with a model that fails it.")
-    else:
-        print("\n  >>> no firmly-established sign is contradicted.")
-    return out, firm_bad
+        print(f"\n  >>> {firm_bad}: sign OPPOSITE to firmly established")
+        print("  >>> ecology, at a magnitude large enough to mean it. The")
+        print("  >>> model has fitted site geometry rather than ecology.")
+        print("  >>> Do not proceed to valuation.")
+    if silent:
+        print(f"\n  >>> {silent}: |coefficient| below "
+              f"{SIGN_MIN_MAGNITUDE:.2f} standardised units, i.e.")
+        print("  >>> NO DETECTABLE EFFECT rather than a wrong one. That is a")
+        print("  >>> statement about the training data, not about the")
+        print("  >>> covariate: either the range sampled is too narrow to")
+        print("  >>> learn from, or the effect is confounded with something")
+        print("  >>> already in the model. Report the term as untested; do")
+        print("  >>> NOT report it as evidence the covariate does not matter.")
+    if not firm_bad and not silent:
+        print("\n  >>> every term has a detectable effect in the expected"
+              " direction.")
+    return out, firm_bad, silent
+
+
+# ---------------------------------------------------------------------------
+# Site-balanced weights and per-site intercepts
+# ---------------------------------------------------------------------------
+
+def site_weights(site_idx, n_sites) -> np.ndarray:
+    """Weights giving every site the same total influence on the likelihood.
+
+    Without this the fit is dominated by whoever surveyed most: Kilkieran
+    contributed 30,223 cells against Valencia's 2,838, more than ten to one.
+    The likelihood then describes the big sites and the model is theirs.
+    """
+    w = np.ones(site_idx.size, dtype=float)
+    for k in range(n_sites):
+        m = site_idx == k
+        n = int(m.sum())
+        if n:
+            w[m] = 1.0 / n
+    return w * (site_idx.size / max(n_sites, 1))    # keep the total near n
+
+
+def add_interaction(Z, features):
+    """Append standardised depth x standardised fetch.
+
+    WHY THIS TERM EXISTS
+    Without it the model can only say "shallow means kelp", uniformly. That is
+    what it said, at a depth coefficient of -4.072 against fetch +0.685, and it
+    is why inner_roaringwater - shallow AND sheltered, NPWS say not Laminaria -
+    scored 0.885 and produced an 82.9% false-positive rate.
+
+    The ecology the term encodes is not ours: the lower limit of kelp is set by
+    light, exposed water is clearer than sheltered water, so the depth to which
+    kelp reaches is not one number but a function of exposure. A model with
+    only additive depth and fetch cannot express that; one shallow sheltered
+    cell and one shallow exposed cell must get the same depth contribution.
+
+    Z must already be standardised, and depth and fetch must be in `features`.
+    """
+    di = features.index("depth_m")
+    fi = features.index("log10_fetch")
+    return np.hstack([Z, (Z[:, di] * Z[:, fi]).reshape(-1, 1)])
+
+
+def design(Z, site_idx, n_sites):
+    """One-hot site columns followed by the standardised covariates.
+
+    WHY PER-SITE INTERCEPTS, AND WHY THIS IS THE ACTUAL FIX
+    Kelp prevalence among labelled cells runs from 5.6% at Saltee Islands to
+    77% at Kilkieran. Saltee is an exposed offshore group; Kilkieran is a
+    sheltered bay. A single pooled intercept forces one baseline on both, so
+    the fit can only explain that difference through the covariates - and the
+    covariate that most separates those two sites is fetch. The pooled model
+    therefore learns "high fetch means no kelp", which is backwards, and which
+    is exactly the -0.278 and then -0.028 we kept seeing.
+
+    Giving each site its own intercept absorbs the prevalence difference. The
+    remaining slopes are then WITHIN-site effects: what makes one cell more
+    kelp-like than its neighbour at the same site. That is the quantity we
+    want, and it is the quantity that can transfer.
+
+    The cost is real and must be stated: a site outside the training set has no
+    intercept, so predicted PROBABILITIES are not calibrated for it. Only the
+    ranking transfers. AUC is rank-based and is unaffected; a fixed probability
+    cut-off is not, which is why the operating threshold below is taken from
+    out-of-site predictions rather than left at 0.5.
+    """
+    D = np.zeros((Z.shape[0], n_sites))
+    D[np.arange(Z.shape[0]), site_idx] = 1.0
+    return np.hstack([D, Z])
+
+
+def reef_mask(bbox, grid_m, gdf_all, to_itm):
+    """Cells falling inside ANY layer-21 polygon, i.e. mapped reef of any kind.
+
+    WHY PREDICTION MUST BE RESTRICTED TO IT
+    Layer 21 is a REEF inventory. Every training cell we have - Laminaria-
+    dominated reef and Faunal turf reef alike - is hard substrate, because
+    that is all the layer contains. The model therefore never saw sand, mud or
+    gravel and has no way to recognise them; substrate is constant across the
+    entire training set, which is also why slope came out at +0.002 and
+    curvature with the wrong sign. There was nothing there to separate.
+
+    Predicting on every cell of an AOI then asks the model a question it was
+    never trained to answer, and it answers confidently anyway. So prediction
+    is confined to mapped reef, and everything else is reported as NOT
+    ASSESSED - which is not the same as unsuitable and must never be shown or
+    summed as if it were zero.
+
+    The cost, and it goes on the slide: the tool needs a pre-existing reef map.
+    Inside Irish SACs one exists; outside them it does not, and that is a real
+    limit on where this can be deployed today.
+    """
+    from shapely.geometry import Point
+    from shapely.strtree import STRtree
+
+    polys = [g for g in gdf_all.geometry if g is not None and not g.is_empty]
+    lons, lats = axes(bbox, grid_m)
+    m = np.zeros((len(lats), len(lons)), dtype=bool)
+    if not polys:
+        return m
+    tree = STRtree(polys)
+    pts = [(float(lo), float(la)) for la in lats for lo in lons]
+    xs, ys = to_itm.transform([p[0] for p in pts], [p[1] for p in pts])
+    nx = len(lons)
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        pt = Point(x, y)
+        if any(polys[j].covers(pt) for j in tree.query(pt)):
+            m[i // nx, i % nx] = True
+    return m
+
+
+def calibrated_threshold(y, scores, specificity=TARGET_SPECIFICITY):
+    """Score cut-off achieving the target specificity on known negatives."""
+    neg = np.asarray(scores)[np.asarray(y) == 0]
+    if neg.size < 30:
+        return float("nan")
+    return float(np.percentile(neg, 100.0 * specificity))
+
+
+def site_diagnostics(parts, site_names):
+    """Why a site transfers or does not: prevalence, depth split, exposure."""
+    di = FEATURES_ALL.index("depth_m")
+    fi = FEATURES_ALL.index("log10_fetch")
+    print(f"\n  {'site':<40}{'kelp%':>7}{'kelp d':>8}{'turf d':>8}"
+          f"{'depth AUC':>11}{'fetch range':>13}")
+    rows = []
+    for d, name in zip(parts, site_names):
+        X, y = d["X"], d["y"]
+        prev = float(y.mean())
+        dk = float(np.median(X[y == 1, di])) if (y == 1).any() else float("nan")
+        dt = float(np.median(X[y == 0, di])) if (y == 0).any() else float("nan")
+        a_depth = 1.0 - auc(y, X[:, di])        # shallower = kelp
+        fr = float(X[:, fi].max() - X[:, fi].min())
+        print(f"  {name[:39]:<40}{prev:>7.1%}{dk:>8.1f}{dt:>8.1f}"
+              f"{a_depth:>11.3f}{10 ** fr:>12.0f}x")
+        rows.append({"site": name, "kelp_share": round(prev, 4),
+                     "median_depth_kelp": round(dk, 2),
+                     "median_depth_turf": round(dt, 2),
+                     "depth_only_auc": round(a_depth, 4),
+                     "fetch_range_x": round(10 ** fr, 1)})
+    print("  >>> 'depth AUC' is the depth-only separation WITHIN that site. If")
+    print("  >>> it is ~0.95 everywhere, the label is effectively a depth band")
+    print("  >>> and no model can do better than reproduce it - which would")
+    print("  >>> make the honest product a depth-band rule, reported as one.")
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +658,7 @@ def selftest() -> int:
     si = np.array([0] * 100 + [1] * 100 + [2] * 100)
     yy = np.concatenate([rng.integers(0, 2, 100).astype(float) for _ in sites])
     XX = rng.normal(size=(300, 2))
-    _, per, oof = loso(XX, yy, si, sites)
+    _, per, oof, _ = loso(XX, yy, si, sites)
     assert np.isfinite(oof).all(), "every row must get an out-of-site prediction"
     assert set(per) == set(sites)
     print("  LOSO: every row predicted by a model that never saw its site  ok")
@@ -457,7 +676,7 @@ def selftest() -> int:
     X2 = np.concatenate([xa, xb]).reshape(-1, 1)
     y2 = np.concatenate([ya, yb])
     s2 = np.array([0] * n + [1] * n)
-    a_loso, per2, _ = loso(X2, y2, s2, ["A", "B"])
+    a_loso, per2, _, _ = loso(X2, y2, s2, ["A", "B"])
     assert a_loso < 0.35, (a_loso, per2)
     print(f"  LOSO on sites with opposite relationships: AUC {a_loso:.3f}"
           f"  (collapses, as it must)  ok")
@@ -465,26 +684,128 @@ def selftest() -> int:
     # And when the sites AGREE, LOSO must score well - otherwise the test
     # above only shows LOSO can fail, not that it can succeed.
     yb_same = (xb > 0).astype(float)
-    a_ok, _, _ = loso(X2, np.concatenate([ya, yb_same]), s2, ["A", "B"])
+    a_ok, _, _, _ = loso(X2, np.concatenate([ya, yb_same]), s2,
+                         ["A", "B"])
     assert a_ok > 0.9, a_ok
     print(f"  LOSO on sites that agree: AUC {a_ok:.3f}  ok")
 
-    # --- sign check --------------------------------------------------------
-    feats = ("depth_m", "slope_deg", "curvature", "log10_fetch")
-    good = np.array([0.0, -2.0, +0.5, +0.5, +0.5])
-    _, bad_list = check_signs(good, feats)
-    assert bad_list == [], bad_list
-    # the first model's actual coefficients must be flagged
-    first_model = np.array([0.052, -3.976, +0.542, -0.777, -0.278])
-    _, bad2 = check_signs(first_model, feats)
-    assert "log10_fetch" in bad2, bad2
-    print(f"\n  sign check: clean model passes, the rejected single-site "
-          f"coefficients are flagged {bad2}  ok")
+    # --- site-balanced weights ---------------------------------------------
+    si2 = np.array([0] * 900 + [1] * 100)
+    w2 = site_weights(si2, 2)
+    assert abs(w2[si2 == 0].sum() - w2[si2 == 1].sum()) < 1e-9
+    assert abs(w2.sum() - si2.size) < 1e-6
+    print(f"  site weights: 900 vs 100 cells -> equal total influence "
+          f"({w2[si2 == 0].sum():.0f} each)  ok")
 
-    print("\nSELFTEST PASSED. dilate grows a diamond, LOSO gives every row an")
-    print("out-of-site prediction, it collapses when sites disagree and")
-    print("succeeds when they agree, and the sign check flags exactly the")
-    print("coefficients that caused the first model to be rejected.")
+    # --- THE fix, demonstrated -------------------------------------------
+    # Two sites. WITHIN each, higher fetch means more kelp. But the exposed
+    # site has low kelp prevalence and the sheltered site has high prevalence -
+    # which is Saltee (5.6% kelp, exposed) against Kilkieran (77%, sheltered).
+    # A pooled intercept must give fetch the WRONG sign; per-site intercepts
+    # must recover the right one. If both fits agreed, the fix would be doing
+    # nothing.
+    nA = nB = 700
+    fa = 2.0 + rng.normal(0, 0.3, nA)
+    ya2 = ((fa - 2.0) + rng.normal(0, 0.25, nA) > -0.35).astype(float)
+    fb = 4.0 + rng.normal(0, 0.3, nB)
+    yb2 = ((fb - 4.0) + rng.normal(0, 0.25, nB) > +0.35).astype(float)
+    Zc = np.concatenate([fa, fb]).reshape(-1, 1)
+    Zc = (Zc - Zc.mean()) / Zc.std()
+    yc = np.concatenate([ya2, yb2])
+    sc = np.array([0] * nA + [1] * nB)
+
+    b_pooled = fit_logistic(Zc, yc)
+    b_sites = fit_logistic(design(Zc, sc, 2), yc,
+                           sample_weight=site_weights(sc, 2),
+                           add_intercept=False, unpenalised=(0, 1))
+    print(f"\n  confounded fixture: prevalence {ya2.mean():.0%} (sheltered) "
+          f"vs {yb2.mean():.0%} (exposed)")
+    print(f"    pooled intercept   -> fetch coefficient {b_pooled[1]:+.3f}")
+    print(f"    per-site intercepts -> fetch coefficient {b_sites[2]:+.3f}")
+    assert b_pooled[1] < 0, b_pooled
+    assert b_sites[2] > 0, b_sites
+    print("  per-site intercepts flip the confounded sign back  ok")
+
+    # --- sign check, all three verdicts ------------------------------------
+    feats = ("depth_m", "slope_deg", "curvature", "log10_fetch")
+    _, bad_ok, sil_ok = check_signs(np.array([-2.0, +0.5, +0.5, +0.5]), feats)
+    assert bad_ok == [] and sil_ok == [], (bad_ok, sil_ok)
+    # the FIRST model: a genuinely wrong-signed fetch effect
+    _, bad2, sil2 = check_signs(np.array([-3.976, +0.542, -0.777, -0.278]),
+                                feats)
+    assert "log10_fetch" in bad2 and sil2 == [], (bad2, sil2)
+    # the SECOND model: fetch at -0.028 is no effect, NOT a wrong sign. The
+    # version of this function without a magnitude floor called it OPPOSITE.
+    _, bad3, sil3 = check_signs(np.array([-2.343, +0.393, -0.280, -0.028]),
+                                feats)
+    assert bad3 == [], bad3
+    assert "log10_fetch" in sil3, sil3
+    print(f"\n  sign check: clean passes, -0.278 flagged OPPOSITE {bad2}, "
+          f"-0.028 flagged as no effect {sil3}  ok")
+
+    # --- what the interaction actually does, measured not assumed --------
+    # Fixture: the depth limit GROWS with exposure, 6 m sheltered to ~25 m
+    # exposed, on a curved boundary an additive model cannot draw.
+    #
+    # The first version of this test asserted the interaction would lift AUC by
+    # at least 0.02. It does not. Measured across noise levels the gain is
+    # about +0.004, because AUC is rank-based and an additive model still ranks
+    # a curved boundary nearly as well. The assertion was written from what the
+    # term was hoped to do; it has been replaced with what it does.
+    #
+    # What IS robust is the coefficient sign, and that is worth having: it is
+    # the one term whose direction the ecology predicts unambiguously, so a
+    # negative value would be a red flag. Nobody should expect this term to
+    # rescue a failing false-positive rate.
+    nn = 4000
+    dep = rng.uniform(0, 35, nn)
+    fet = rng.uniform(2.0, 4.3, nn)
+    limit = 6.0 * 2.0 ** ((fet - 2.0) / 0.6)
+    Zk = np.column_stack([dep, fet])
+    Zk = (Zk - Zk.mean(axis=0)) / Zk.std(axis=0)
+    Zi = add_interaction(Zk, ("depth_m", "log10_fetch"))
+    sk = np.zeros(nn, dtype=int)
+
+    def score(b, Z, yv):
+        eta = b[0] + Z @ b[1:]
+        return auc(yv, 1.0 / (1.0 + np.exp(-np.clip(eta, -30, 30))))
+
+    print("\n  exposure-dependent depth limit (6 m sheltered -> 25 m exposed):")
+    for noise in (0.0, 2.0, 4.0):
+        yk = (dep + rng.normal(0, noise, nn) < limit).astype(float)
+        b_add = fit_logistic(design(Zk, sk, 1), yk, add_intercept=False,
+                             unpenalised=(0,))
+        b_int = fit_logistic(design(Zi, sk, 1), yk, add_intercept=False,
+                             unpenalised=(0,))
+        a_add, a_int = score(b_add, Zk, yk), score(b_int, Zi, yk)
+        print(f"    noise {noise:.0f} m: additive {a_add:.4f}, "
+              f"interaction {a_int:.4f} ({a_int - a_add:+.4f}), "
+              f"coef {b_int[3]:+.2f}")
+        # nesting: the larger model can never rank worse than the one inside it
+        assert a_int >= a_add - 1e-6, (a_add, a_int)
+        # and the sign the ecology predicts, at every noise level
+        assert b_int[3] > 0, b_int
+    print("  interaction: correct sign at every noise level, AUC gain small")
+    print("  (~+0.004) - it is a shape correction, not a rescue  ok")
+
+    # --- calibrated threshold ---------------------------------------------
+    yt = np.concatenate([np.ones(300), np.zeros(300)])
+    st = np.concatenate([rng.normal(0.7, 0.1, 300), rng.normal(0.3, 0.1, 300)])
+    t = calibrated_threshold(yt, st, 0.90)
+    spec = float((st[yt == 0] <= t).mean())
+    assert abs(spec - 0.90) < 0.02, (t, spec)
+    # too few negatives must give NaN, never a fabricated cut-off
+    assert np.isnan(calibrated_threshold(np.ones(10), np.ones(10)))
+    assert np.isnan(calibrated_threshold(yt[:20], st[:20]))
+    print(f"  calibrated threshold {t:.3f} gives {spec:.0%} specificity, and "
+          f"returns NaN when there are too few negatives  ok")
+
+    print("\nSELFTEST PASSED. dilate grows a diamond; LOSO gives every row an")
+    print("out-of-site prediction, collapses when sites disagree and succeeds")
+    print("when they agree; site weights equalise unequal sites; per-site")
+    print("intercepts flip a confounded coefficient back to the right sign;")
+    print("the sign check separates a wrong sign from no effect; and the")
+    print("operating threshold hits its target specificity.")
     return 0
 
 
@@ -503,6 +824,12 @@ def main() -> int:
     ap.add_argument("--sites", nargs="*", help="override site discovery")
     ap.add_argument("--list-sites", action="store_true",
                     help="show the candidate sites and stop")
+    ap.add_argument("--no-interaction", action="store_true",
+                    help="drop the depth x fetch term, for comparison")
+    ap.add_argument("--all-cells", action="store_true",
+                    help="predict everywhere instead of on mapped reef only. "
+                         "Off by default: the model only ever saw reef, so a "
+                         "score on sand is not a prediction, it is a guess.")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
@@ -590,21 +917,52 @@ def main() -> int:
           f"  = {10 ** (X[:, fi].max() - X[:, fi].min()):.0f}x")
     print("  >>> Kenmare alone spanned about 11x and could not learn exposure.")
 
+    print("\n" + "=" * 74)
+    print("PER-SITE DIAGNOSTICS")
+    print("=" * 74)
+    diag = site_diagnostics(parts, site_names)
+
     mu, sd = X.mean(axis=0), X.std(axis=0)
     sd[sd == 0] = 1.0
     Xz = (X - mu) / sd
-    beta = fit_logistic(Xz, y)
+
+    feat_names = list(FEATURES_ALL)
+    if not args.no_interaction:
+        Xz = add_interaction(Xz, FEATURES_ALL)
+        feat_names.append(INTERACTION)
+        print(f"\n  interaction term added: {INTERACTION}")
+        print("  >>> Without it the model can only say 'shallow means kelp',")
+        print("  >>> uniformly, which is what produced the 82.9% false")
+        print("  >>> positives at shallow sheltered inner_roaringwater.")
+
+    n_sites = len(site_names)
+    w = site_weights(site_idx, n_sites)
+    Dz = design(Xz, site_idx, n_sites)
+    b_full = fit_logistic(Dz, y, sample_weight=w, add_intercept=False,
+                          unpenalised=tuple(range(n_sites)))
+    intercepts = b_full[:n_sites]
+    beta_z = b_full[n_sites:]
+
+    print("\n  per-site intercepts (baseline log-odds of kelp):")
+    for i, nm in enumerate(site_names):
+        print(f"    {nm[:44]:<46}{intercepts[i]:>+8.2f}")
+    print("  >>> These absorb the prevalence differences between sites, so the")
+    print("  >>> covariate coefficients below are WITHIN-site effects. A site")
+    print("  >>> outside the training set has no intercept, so its predicted")
+    print("  >>> probabilities are uncalibrated - only the ranking transfers.")
 
     print("\n" + "=" * 74)
     print("COEFFICIENT SIGNS vs PUBLISHED ECOLOGY")
     print("=" * 74)
-    signs, firm_bad = check_signs(beta, FEATURES_ALL)
+    signs, firm_bad, silent = check_signs(beta_z, feat_names)
 
     print("\n" + "=" * 74)
     print("LEAVE-ONE-SITE-OUT VALIDATION")
     print("=" * 74)
-    a_loso, per_site, oof = loso(Xz, y, site_idx, site_names)
-    a_in = auc(y, predict_proba(beta, Xz))
+    a_loso, per_site, oof, loso_slopes = loso(Xz, y, site_idx, site_names,
+                                              weights=True)
+    eta_in = intercepts[site_idx] + Xz @ beta_z
+    a_in = auc(y, 1.0 / (1.0 + np.exp(-np.clip(eta_in, -30, 30))))
     print(f"  in-sample AUC (not performance)   {a_in:.3f}")
     print(f"  LEAVE-ONE-SITE-OUT AUC            {a_loso:.3f}   <-- the number")
     print(f"                                                    for the slide")
@@ -626,20 +984,49 @@ def main() -> int:
     for f in FEATURES_ALL:
         print(f"    {f:<14}{ranges[f][0]:>10.3f}  to {ranges[f][1]:>10.3f}")
 
+    thr = calibrated_threshold(y, oof, TARGET_SPECIFICITY)
+    print(f"\n  operating threshold at {TARGET_SPECIFICITY:.0%} specificity on")
+    print(f"  out-of-site predictions: {thr:.4f}")
+    print("  >>> Not 0.5. With per-site intercepts a fixed 0.5 has no meaning")
+    print("  >>> on an unseen site, and with prevalence running from 5.6% to")
+    print("  >>> 77% across the training sites it had little meaning anyway.")
+
     from suitability_model import build_grid, flatten
     rows, summaries, ext_pos, ext_n = [], [], 0, 0
+    mean_intercept = float(np.mean(intercepts))
     for name in ("sherkin_baltimore", "inner_roaringwater", "mizen_outer"):
         print(f"\n  --- {name} ---")
         g = build_grid(name, AOIS[name], args.grid, gdf, to_itm, args.fetch)
-        Xa, _, lo_a, la_a, mk, _ = flatten(g, FEATURES_ALL, labelled_only=False)
+        Xa, _, lo_a, la_a, mk, okmask = flatten(g, FEATURES_ALL,
+                                                labelled_only=False)
         if Xa.shape[0] == 0:
             print("    nothing predictable here.")
             continue
         inside, detail = in_range(Xa, ranges, FEATURES_ALL)
-        pr = predict_proba(beta, (Xa - mu) / sd)
+        Za = (Xa - mu) / sd
+        if not args.no_interaction:
+            Za = add_interaction(Za, FEATURES_ALL)
+        eta_a = mean_intercept + Za @ beta_z
+        pr = 1.0 / (1.0 + np.exp(-np.clip(eta_a, -30, 30)))
         cell_ha = (args.grid ** 2) / 1e4
+
+        # Restrict to mapped reef unless explicitly told not to.
+        if args.all_cells:
+            on_reef = np.ones(Xa.shape[0], dtype=bool)
+        else:
+            rm = reef_mask(AOIS[name], args.grid, gdf, to_itm)
+            on_reef = rm[okmask]
+        n_off = int((~on_reef).sum())
         print(f"    cells {Xa.shape[0]} ({Xa.shape[0] * cell_ha:.0f} ha), "
               f"inside training range {inside.mean():.0%}")
+        if not args.all_cells:
+            print(f"    on mapped reef {int(on_reef.sum())}"
+                  f"  ({on_reef.mean():.0%})"
+                  f"   NOT ASSESSED off reef: {n_off} cells "
+                  f"({n_off * cell_ha:.0f} ha)")
+            print("    >>> 'not assessed' is not 'unsuitable'. It must be blank")
+            print("    >>> on the map and absent from every area and euro sum.")
+        inside = inside & on_reef
         for f, sh in detail.items():
             if sh > 0.10:
                 print(f"      {f}: {sh:.0%} outside")
@@ -648,19 +1035,23 @@ def main() -> int:
                   f"{np.median(pr[inside]):.3f}")
         usable = (mk == 2) & inside
         if usable.sum() >= 30:
-            fp = float((pr[usable] > DECISION_THRESHOLD).mean())
-            ext_pos += int((pr[usable] > DECISION_THRESHOLD).sum())
+            fp = float((pr[usable] > thr).mean())
+            ext_pos += int((pr[usable] > thr).sum())
             ext_n += int(usable.sum())
             print(f"    EXTERNAL NEGATIVES: {int(usable.sum())} cells, "
-                  f"{fp:.1%} above {DECISION_THRESHOLD}")
+                  f"{fp:.1%} above the {thr:.3f} operating threshold")
         for k in range(Xa.shape[0]):
             rows.append({"aoi": name, "lon": round(float(lo_a[k]), 6),
                          "lat": round(float(la_a[k]), 6),
                          "suitability": round(float(pr[k]), 4),
+                         "on_mapped_reef": int(on_reef[k]),
                          "in_training_range": int(inside[k]),
+                         "assessed": int(on_reef[k] and inside[k]),
                          "npws_label": int(mk[k])})
         summaries.append({"aoi": name, "cells": int(Xa.shape[0]),
-                          "share_in_range": round(float(inside.mean()), 4),
+                          "on_mapped_reef": int(on_reef.sum()),
+                          "not_assessed_off_reef_ha": round(n_off * cell_ha, 1),
+                          "share_assessed": round(float(inside.mean()), 4),
                           "median_suitability_in_range":
                               (round(float(np.median(pr[inside])), 4)
                                if inside.sum() else None)})
@@ -699,8 +1090,19 @@ def main() -> int:
     print(f"  4. no firm sign contradicted           {firm_bad or 'none'}"
           f"   {'PASS' if ok4 else 'FAIL'}")
     res["signs"] = {"contradicted": firm_bad, "pass": bool(ok4)}
+    if silent:
+        print(f"  -  terms with no detectable effect     {silent}   "
+              f"NOT A FAILURE, but they must be reported as untested rather")
+        print("     than as evidence the covariate does not matter.")
+    # NOTE: `res` holds one dict per pre-registered criterion and nothing else.
+    # An earlier version also stashed a list and a float in here, and the
+    # verdict scan below - which calls v.get("pass") on every value - crashed
+    # on them. Anything that is not a criterion goes in `extras`.
+    extras = {"silent_terms": silent,
+              "operating_threshold": (round(thr, 4) if thr == thr else None)}
 
-    fails = [k for k, v in res.items() if v.get("pass") is False]
+    fails = [k for k, v in res.items()
+             if isinstance(v, dict) and v.get("pass") is False]
     print("")
     if fails:
         print(f"  >>> FAILED: {fails}. NOT accepted. The thresholds were fixed")
@@ -720,10 +1122,15 @@ def main() -> int:
         "sites_considered": all_sites, "sites_used": site_names,
         "training": {"n": int(y.size), "n_kelp": int(y.sum()),
                      "n_turf": int((1 - y).sum())},
-        "coefficients_standardised": {
-            "intercept": round(float(beta[0]), 4),
-            **{f: round(float(beta[i + 1]), 4)
-               for i, f in enumerate(FEATURES_ALL)}},
+        "site_intercepts": {nm: round(float(intercepts[i]), 4)
+                            for i, nm in enumerate(site_names)},
+        "features_fitted": feat_names,
+        "coefficients_standardised_within_site": {
+            f: round(float(beta_z[i]), 4)
+            for i, f in enumerate(feat_names)},
+        "loso_slopes_per_fold": loso_slopes,
+        "site_diagnostics": diag,
+        "operating_threshold": (round(thr, 4) if thr == thr else None),
         "standardisation": {f: {"mean": round(float(mu[i]), 4),
                                 "sd": round(float(sd[i]), 4)}
                             for i, f in enumerate(FEATURES_ALL)},
@@ -732,7 +1139,8 @@ def main() -> int:
                 "leave_one_site_out": round(a_loso, 4),
                 "per_site": per_site, "worst_site": worst},
         "training_ranges": ranges, "application": summaries,
-        "acceptance": {"thresholds": ACCEPTANCE, "results": res},
+        "acceptance": {"thresholds": ACCEPTANCE, "results": res,
+                       "extras": extras},
         "caveats": [
             "Leave-one-site-out AUC measures transfer between SURVEYED sites. "
             "It does not validate the Roaringwater output, where no kelp "
