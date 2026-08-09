@@ -1047,7 +1047,10 @@ def main() -> int:
                          "on_mapped_reef": int(on_reef[k]),
                          "in_training_range": int(inside[k]),
                          "assessed": int(on_reef[k] and inside[k]),
-                         "npws_label": int(mk[k])})
+                         "npws_label": int(mk[k]),
+                         **{f: round(float(Xa[k, i]), 4)
+                            for i, f in enumerate(FEATURES_ALL)}})
+                         
         summaries.append({"aoi": name, "cells": int(Xa.shape[0]),
                           "on_mapped_reef": int(on_reef.sum()),
                           "not_assessed_off_reef_ha": round(n_off * cell_ha, 1),
