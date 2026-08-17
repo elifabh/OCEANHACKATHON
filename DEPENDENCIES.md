@@ -110,6 +110,7 @@ their transitive dependencies.
 | QGIS                     | **NOT INSTALLED**                     | GPL-2.0-or-later | VERIFIED | visual QA only. **Important: GPL. Nothing from QGIS may be embedded in our deliverable; using it to look at data is fine.**                                                                                       |
 | ACOLITE                  | **NOT INSTALLED**                     | GPL-3.0          | UNREAD   | atmospheric correction, L1C → water reflectance. **GPL-3.0 is the licence stated by the project; confirm on its repository before the 48 h, and keep it as an external processing step rather than linked code.** |
 | Git / Git Bash (MINGW64) | _local_                               | GPL-2.0          | VERIFIED | development tool only, not distributed                                                                                                                                                                            |
+| Leaflet (JS)             | 1.9.4, vendored at `src/vendor/leaflet` | BSD-2-Clause     | VERIFIED | licence read from the `LICENSE` file shipped with the dist and kept beside it. **Embedded in the map deliverable** (`outputs/map/vendor/`), copied there by `src/build_map.py`. BSD-2 requires the copyright notice to travel with it — the LICENSE file is copied too. |
 
 > **Action:** QGIS and ACOLITE are both still uninstalled. ACOLITE is on the
 > critical path for the water pipeline (Sen2Cor L2A is not valid over water —
@@ -131,6 +132,8 @@ their transitive dependencies.
 | Irish National Tide Gauge Network (Union Hall, Castletownbere) via ERDDAP | Marine Institute                                                                   | CC BY 4.0                                                                  | **RECORDED, NOT RE-CHECKED** — taken from `common.ATTRIBUTION`; re-read from the ERDDAP dataset page |
 | Wave fetch, 200 m, log10 summed fetch, `log10_eu200m1a.tif`               | M.T. Burrows, figshare                                                             | **UNREAD**                                                                 | **BLOCKER — see §5**                                                                                 |
 | Google Earth Engine                                                       | Google                                                                             | Earth Engine Terms of Service                                              | **UNREAD**                                                                                           | community / non-commercial tier; terms not read |
+| EPA WFD coastal waterbodies + status cycles (`outputs/epa_cwb/*.geojson`, embedded in the step 6 map) | Environmental Protection Agency, Ireland | CC BY 4.0 | **VERIFIED 2026-08-17** — data.gov.ie dataset page states "published under the terms of the license Creative Commons Attribution 4.0 International (CC BY 4.0)". The gis.epa.ie GeoNetwork record timed out on the same day; re-confirm there when reachable. |
+| OpenStreetMap basemap tiles (runtime only, step 6 map)                    | OpenStreetMap contributors                                                         | ODbL 1.0 (data); tiles per OSMF tile-usage policy                          | **VERIFIED, decision recorded** — tiles are DISPLAY ONLY, fetched at runtime, never stored, and no OSM geometry or attribute enters our data or valuation database, so the ODbL share-alike obligation is not triggered. Attribution shown on the map itself. The map renders its own layers without tiles when offline. |
 
 **On the NPWS entry.** NPWS states that it publishes its data holdings, where
 possible, as Open Data under CC BY 4.0, and its own map services carry the
@@ -152,7 +155,7 @@ Listed so that nothing arrives in the prototype undeclared.
 | GBIF                                                | GBIF                        | varies by dataset; per-record citation required | UNREAD — biodiversity score                                                                                                                                                          |
 | OPW national flood maps                             | Office of Public Works      | UNREAD                                          | UNREAD — coastal assets at risk                                                                                                                                                      |
 | GeoHive / Tailte Éireann                            | Tailte Éireann              | UNREAD                                          | UNREAD                                                                                                                                                                               |
-| OpenStreetMap                                       | OSM contributors            | ODbL 1.0                                        | **VERIFIED** — ODbL is share-alike for derived databases. **If OSM data enters the valuation database, the share-alike obligation propagates. Decide deliberately before using it.** |
+| OpenStreetMap                                       | OSM contributors            | ODbL 1.0                                        | **MOVED TO §3.1** (2026-08-17) — in use as runtime basemap tiles only; the deliberate decision required by this row is recorded there. |
 
 ---
 
@@ -178,6 +181,16 @@ publisher specifies it. The canonical copies live in `common.ATTRIBUTION`.
 **Sentinel-2**
 
 > Contains modified Copernicus Sentinel data 2026. Processed by the authors.
+
+**EPA (WFD waterbody layers on the step 6 map)**
+
+> Water Framework Directive waterbody and status data: Environmental
+> Protection Agency, Ireland. Licensed under Creative Commons Attribution 4.0
+> International (CC BY 4.0).
+
+**OpenStreetMap (basemap tiles on the step 6 map)**
+
+> © OpenStreetMap contributors.
 
 **Marine Institute tide gauges**
 
