@@ -130,7 +130,7 @@ their transitive dependencies.
 | NPWS Reef Inventory 2023, layer 21 `NPWSArticle17Habitat`                 | National Parks & Wildlife Service, Dept. of Housing, Local Government and Heritage | CC BY 4.0                                                                  | **POLICY VERIFIED, DATASET METADATA UNREAD** — see note below                                        |
 | Sentinel-2 L1C / L2A                                                      | ESA / Copernicus, via Copernicus Data Space and Google Earth Engine                | Free, full and open under the Copernicus data policy; attribution required | **PARTIAL** — the policy is unambiguous, the exact legal instrument has not been cited in our text   |
 | Irish National Tide Gauge Network (Union Hall, Castletownbere) via ERDDAP | Marine Institute                                                                   | CC BY 4.0                                                                  | **RECORDED, NOT RE-CHECKED** — taken from `common.ATTRIBUTION`; re-read from the ERDDAP dataset page |
-| Wave fetch, 200 m, log10 summed fetch, `log10_eu200m1a.tif`               | M.T. Burrows, figshare                                                             | **UNREAD**                                                                 | **BLOCKER — see §5**                                                                                 |
+| Wave fetch, 200 m, log10 summed fetch, `log10_eu200m1a.tif`               | M.T. Burrows, figshare                                                             | CC BY 4.0                                                                  | **VERIFIED 2026-08-17** — figshare record 12029682 ("Wave fetch GIS layers for the UK and Ireland at 200m scale", DOI 10.6084/m9.figshare.12029682.v1, published 2020-03-25), licence field read via the figshare public API: `CC BY 4.0, https://creativecommons.org/licenses/by/4.0/`. Our local file is byte-identical to the published one (MD5 `a1f2914f6cefa326f9d571800dc650ec`, 10,853,683 bytes, matches). |
 | Google Earth Engine                                                       | Google                                                                             | Earth Engine Terms of Service                                              | **UNREAD**                                                                                           | community / non-commercial tier; terms not read |
 | EPA WFD coastal waterbodies + status cycles (`outputs/epa_cwb/*.geojson`, embedded in the step 6 map) | Environmental Protection Agency, Ireland | CC BY 4.0 | **VERIFIED 2026-08-17** — data.gov.ie dataset page states "published under the terms of the license Creative Commons Attribution 4.0 International (CC BY 4.0)". The gis.epa.ie GeoNetwork record timed out on the same day; re-confirm there when reachable. |
 | OpenStreetMap basemap tiles (runtime only, step 6 map)                    | OpenStreetMap contributors                                                         | ODbL 1.0 (data); tiles per OSMF tile-usage policy                          | **VERIFIED, decision recorded** — tiles are DISPLAY ONLY, fetched at runtime, never stored, and no OSM geometry or attribute enters our data or valuation database, so the ODbL share-alike obligation is not triggered. Attribution shown on the map itself. The map renders its own layers without tiles when offline. |
@@ -198,10 +198,10 @@ publisher specifies it. The canonical copies live in `common.ATTRIBUTION`.
 
 **Wave fetch**
 
-> Wave fetch layer: Burrows, M.T., figshare. Method after Burrows et al. (2008)
-> _Marine Ecology Progress Series_ 353:1–12 and Burrows (2012).
-> **LICENCE UNVERIFIED — this attribution is provisional and the layer must not
-> appear in any published output until the figshare record has been read.**
+> Wave fetch layer: Burrows, M.T. (2020). Wave fetch GIS layers for the UK and
+> Ireland at 200m scale. figshare. DOI 10.6084/m9.figshare.12029682.v1.
+> CC BY 4.0. Method after Burrows et al. (2008) _Marine Ecology Progress
+> Series_ 353:1–12 and Burrows (2012).
 
 ---
 
@@ -210,10 +210,9 @@ publisher specifies it. The canonical copies live in `common.ATTRIBUTION`.
 Nothing may be submitted, published or demonstrated publicly while any item in
 this section is open.
 
-1. **Burrows wave fetch licence is unread.** `data/fetch/log10_eu200m1a.tif`,
-   10.35 MB, EPSG:27700. The layer is now a covariate in the suitability model,
-   so this is no longer a minor omission. Read the licence off the figshare
-   record and record it in §3.1. Do not assume CC BY.
+1. ~~**Burrows wave fetch licence is unread.**~~ **RESOLVED 2026-08-17**:
+   CC BY 4.0, read from figshare record 12029682 via the public API; local file
+   MD5-matches the published one. See §3.1.
 2. **NPWS Reef Inventory 2023 dataset licence file unread.** Policy-level CC BY
    4.0 is confirmed; the dataset's own metadata is not.
 3. **Google Earth Engine Terms of Service unread.** The community tier is
