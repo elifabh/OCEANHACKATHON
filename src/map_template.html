@@ -186,13 +186,18 @@
           depth and suitability gates. A model output (subtidal
           <i>Laminaria hyperborea</i>), <b>not</b> a satellite detection or a survey.</p>
       </div>
-      <div class="layer disabled">
-        <label><input type="checkbox" disabled>
-          <span class="name">Intertidal macroalgae (Sentinel-2)</span></label>
-        <p class="caption">Not in this build: no detection-extent product exists in the
-          project outputs yet. When it exists it is species-agnostic <i>intertidal</i>
-          macroalgae — a different product from the subtidal model above, and the two
-          are never merged.</p>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-inter" checked>
+          <span class="name"><span class="swatch" style="background:rgba(139,92,246,.55);border:1.5px solid #5b21b6"></span>
+            Intertidal macroalgae (Sentinel-2) — species-agnostic</span></label>
+        <p class="caption">Satellite detection: NDVI falls as the tide rises
+          (<span data-inter-scenes></span> cloud-free scenes,
+          May–Aug&nbsp;<span data-inter-year></span>,
+          <span data-inter-tide></span>&nbsp;m tide range). Species-agnostic —
+          NDVI cannot separate fucoids from kelps. A different product from the
+          subtidal model above; the two are never merged.
+          Extent <span data-inter-ha></span>&nbsp;ha here, <b>unvalidated</b>
+          against ground truth.</p>
       </div>
       <div class="layer">
         <label><input type="checkbox" id="ly-sites">
@@ -296,6 +301,9 @@
         Protection Agency, Ireland, CC&nbsp;BY&nbsp;4.0. Wave-fetch layer: Burrows,
         M.T. (method: Burrows et&nbsp;al. 2008, MEPS 353:1–12). Biodiversity records:
         OBIS / Seasearch Ireland, per-dataset licences.</p>
+      <p>Contains modified Copernicus Sentinel data. Processed by the authors
+        (intertidal detection). Tide data: Irish National Tide Gauge Network,
+        Marine Institute, via ERDDAP. CC&nbsp;BY&nbsp;4.0.</p>
       <p>Basemap © OpenStreetMap contributors. Built with Leaflet 1.9.4
         (BSD-2-Clause), vendored locally — the map opens and renders its own layers
         without a network connection.</p>
@@ -371,6 +379,7 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 map.createPane("epaPane").style.zIndex = 410;
 map.createPane("suitPane").style.zIndex = 430;
+map.createPane("interPane").style.zIndex = 440;
 map.createPane("bedPane").style.zIndex = 450;
 map.createPane("sitePane").style.zIndex = 470;
 
@@ -394,6 +403,25 @@ const suitLayer = L.layerGroup(D.suitability.cells.map(([lon, lat, s]) => {
       "training range. Operating threshold " +
       D.suitability.threshold.toFixed(2) + " (specificity 0.9).</div>");
 }));
+
+/* intertidal macroalgae extent — violet, deliberately unlike the teal
+   subtidal ramp and the amber bed: the two products must never read as one */
+document.querySelector("[data-inter-scenes]").textContent = D.intertidal.n_scenes;
+document.querySelector("[data-inter-year]").textContent = D.intertidal.year;
+document.querySelector("[data-inter-tide]").textContent = D.intertidal.tide_range_m;
+document.querySelector("[data-inter-ha]").textContent = D.intertidal.area_ha;
+const interLayer = L.geoJSON(D.intertidal.extent, {
+  pane: "interPane",
+  style: { color: "#5b21b6", weight: 1, fillColor: "#8b5cf6", fillOpacity: 0.55 },
+  onEachFeature: (f, ly) => ly.bindPopup(
+    "<h4>Intertidal macroalgae (Sentinel-2)</h4>" +
+    "Species-agnostic detection — NDVI cannot separate fucoids " +
+    "(<i>Fucus</i>, <i>Ascophyllum</i>) from kelps." +
+    "<div class='popup-note'>Tide dose-response, " + D.intertidal.n_scenes +
+    " scenes " + D.intertidal.year + "; extent unvalidated. A different " +
+    "product from the subtidal suitability model — never merged with it, and " +
+    "the subtidal wave-attenuation coefficients do not apply here.</div>"),
+});
 
 /* the 1.75 ha bed */
 const bedLayer = L.geoJSON(D.bed, {
@@ -445,6 +473,7 @@ function wire(id, layer, on) {
     cb.checked ? layer.addTo(map) : map.removeLayer(layer));
 }
 wire("ly-suit", suitLayer, true);
+wire("ly-inter", interLayer, true);
 wire("ly-bed", bedLayer, true);
 wire("ly-epa", epaLayer, false);
 wire("ly-sites", siteLayer, false);
@@ -457,7 +486,8 @@ legend.onAdd = () => {
     "Modelled suitability (0–1)" +
     "<div class='bar'><span class='thresh' title='operating threshold'></span></div>" +
     "<div class='scale-row'><span>0</span><span class='t'>0.71</span><span>1</span></div>" +
-    "<div class='bed-key'><span class='bed-swatch'></span>Modelled bed — 1.75 ha</div>";
+    "<div class='bed-key'><span class='bed-swatch'></span>Modelled bed — 1.75 ha</div>" +
+    "<div class='bed-key'><span class='bed-swatch' style='background:rgba(139,92,246,.55);border-color:#5b21b6'></span>Intertidal macroalgae (satellite)</div>";
   return div;
 };
 legend.addTo(map);

@@ -15,9 +15,10 @@ locked facts is the worst failure mode this file can have.
 
 Layers embedded:
   1. Modelled subtidal suitability (assessed cells only) + the 1.75 ha bed
-  2. Intertidal macroalgae extent - MISSING on disk (outputs/intertidal/
-     was never written); omitted, recorded in the handover note. No
-     placeholder data.
+  2. Intertidal macroalgae extent (Sentinel-2 tide dose-response,
+     outputs/intertidal/extent_*.geojson) - species-agnostic, unvalidated,
+     visually and verbally distinct from layer 1, never merged with it
+     (CLAUDE.md section 4, prohibitions 3 and 5).
   3. Biodiversity dive-site points (panel carries the 14-of-17 headline)
   4. EPA WFD coastal waterbody status, clipped to the map area
   5. OPW flood layer - EXCLUDED by licence (CC BY-NC-ND, unresolved);
@@ -193,6 +194,52 @@ def build_suitability() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Layer 2 - intertidal macroalgae extent (Sentinel-2). Read from the export
+# produced by src/intertidal_extent_export.py, which itself refuses to write
+# unless the intertidal_test.py verdict was "detected" and areas agree. This
+# function re-verifies both on every build: the map must not outlive its
+# evidence. The displayed area is UNVALIDATED and is labelled so in the
+# template; it is not a locked fact and is never used in any valuation.
+# ---------------------------------------------------------------------------
+def build_intertidal() -> dict:
+    inter_dir = ROOT / "outputs" / "intertidal"
+    extent_path = inter_dir / f"extent_{PRIMARY_AOI}_7scenes.geojson"
+    if not extent_path.exists():
+        fail(f"{extent_path} missing - run src/intertidal_test.py then "
+             f"src/intertidal_extent_export.py (no placeholder data)")
+    gj = json.loads(extent_path.read_text(encoding="utf-8"))
+    meta = gj["properties"]
+
+    report = json.loads((inter_dir / meta["source_report"])
+                        .read_text(encoding="utf-8"))
+    if report["outcome"] != "detected":
+        fail(f"intertidal report outcome '{report['outcome']}' != 'detected'")
+    if abs(meta["area_ha"] - report["area_ha"]["intertidal"]) > 0.5:
+        fail("intertidal extent area disagrees with its source report")
+
+    feats = gpd.GeoDataFrame.from_features(gj["features"], crs=CRS_WGS84)
+    area_ha = float(feats.to_crs(CRS_ITM).area.sum()) / 10_000.0
+    if abs(area_ha - meta["area_ha"]) > 0.02 * meta["area_ha"]:
+        fail(f"intertidal geometry recomputes to {area_ha:.2f} ha, "
+             f"metadata says {meta['area_ha']} ha")
+
+    years = sorted({s[:4] for s in meta["scenes"]})
+    if len(years) != 1:
+        fail(f"intertidal scenes span years {years}; caption assumes one")
+    print(f"  intertidal: {len(gj['features'])} polygons, "
+          f"{area_ha:.2f} ha re-verified vs report "
+          f"{report['area_ha']['intertidal']:.1f} ha; year {years[0]}")
+    return {
+        "extent": {"type": "FeatureCollection",
+                   "features": round_geojson_coords(gj["features"], 6)},
+        "area_ha": round(area_ha, 1),
+        "n_scenes": len(meta["scenes"]),
+        "year": years[0],
+        "tide_range_m": round(meta["tide_range_m"], 2),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Layer 4 - EPA WFD waterbodies around the map area, with per-cycle status.
 # Source CRS EPSG:29902 (TM65) - the CRS trap in CLAUDE.md. Geometry is
 # simplified in the projected CRS (metres), then reprojected.
@@ -292,11 +339,7 @@ def main() -> None:
         "suitability": build_suitability(),
         "epa": build_epa(),
         "biodiversity": build_biodiversity(),
-        "intertidal_gap": (
-            "Intertidal macroalgae extent (Sentinel-2): no extent product "
-            "exists on disk (outputs/intertidal/ was never generated). "
-            "Layer omitted rather than fabricated."
-        ),
+        "intertidal": build_intertidal(),
         "opw_note": (
             "OPW national coastal flood extents: licence CC BY-NC-ND 4.0, "
             "clearance pending — layer withheld."
@@ -316,7 +359,8 @@ def main() -> None:
         if forbidden in html:
             fail(f"forbidden figure {forbidden!r} found in output HTML")
     for required in ("14 of 17", "a tool, not a prediction",
-                     "counterfactual illustration"):
+                     "counterfactual illustration", "species-agnostic",
+                     "unvalidated"):
         if required not in html:
             fail(f"required phrase {required!r} missing from output HTML")
 
