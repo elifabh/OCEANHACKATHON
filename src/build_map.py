@@ -84,8 +84,10 @@ LOCKED = {
     "decline_limitations": [
         "The macroalgae element is only reported up to the 2010–2015 "
         "cycle — two independent assessments, not a trend.",
-        "It is a water-quality element (rocky-shore species tool, intertidal), "
-        "a quality ratio — not kelp extent or biomass.",
+        "It is a water-quality element (assessed in Irish coastal waters "
+        "with the RSL intertidal rocky-shore species tool and/or the "
+        "opportunistic green algae tool), a quality ratio — not kelp "
+        "extent or biomass.",
         "The 2007–09 → 2010–12 improvement may be methodological "
         "reclassification, not genuine change.",
         "A coastal waterbody spans tens of km²; the modelled bed is "
