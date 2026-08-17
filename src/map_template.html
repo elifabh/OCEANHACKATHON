@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Invisible Shield — Roaringwater Bay kelp demonstrator</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<style>
+  :root {
+    --accent:       #0e615b;   /* teal — fisheries frame + UI accent      */
+    --accent-soft:  #e3f0ef;
+    --coastal:      #44546b;   /* slate — coastal-protection frame        */
+    --coastal-soft: #eaedf2;
+    --eco-border:   #b9b9b2;   /* neutral — ecological box, non-monetary  */
+    --ink:          #1c1c1a;
+    --ink-2:        #52514e;
+    --ink-3:        #898781;
+    --paper:        #fcfcfb;
+    --paper-2:      #f4f4f1;
+    --hairline:     #e1e0d9;
+    --bed-stroke:   #7c2d12;   /* amber family — the 1.75 ha bed          */
+    --bed-fill:     #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink); background: var(--paper);
+  }
+  #app { display: flex; height: 100%; }
+  #map { flex: 1; min-width: 0; background: #dfe8ea; }
+
+  /* ---------- sidebar ---------- */
+  #panel {
+    width: 400px; flex: none; overflow-y: auto;
+    border-right: 1px solid var(--hairline);
+    padding: 22px 20px 28px;
+  }
+  #panel h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
+  #panel .subtitle { color: var(--ink-2); font-size: 12.5px; margin: 4px 0 2px; }
+  #panel .buildstamp { color: var(--ink-3); font-size: 11px; }
+  section { margin-top: 22px; }
+  section > h2 {
+    font-size: 11px; font-weight: 650; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 10px;
+  }
+
+  /* layer list */
+  .layer { margin-bottom: 11px; }
+  .layer label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+  .layer input { accent-color: var(--accent); transform: translateY(1px); }
+  .layer .name { font-weight: 550; font-size: 13.5px; }
+  .layer .swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 2px; transform: translateY(1px);
+  }
+  .layer .caption {
+    margin: 2px 0 0 26px; font-size: 11px; color: var(--ink-3); line-height: 1.45;
+  }
+  .layer.disabled label { cursor: not-allowed; }
+  .layer.disabled .name { color: var(--ink-3); font-weight: 500; }
+
+  /* valuation frames */
+  .frame {
+    border: 1px solid var(--hairline); border-left: 4px solid var(--accent);
+    border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;
+    background: var(--paper);
+  }
+  .frame.coastal { border-left-color: var(--coastal); }
+  .frame h3 { font-size: 13px; font-weight: 650; margin-bottom: 8px; }
+  .frame.fisheries h3 { color: var(--accent); }
+  .frame.coastal h3 { color: var(--coastal); }
+  .row { display: flex; justify-content: space-between; gap: 10px; margin: 7px 0; }
+  .row .what { font-size: 13px; }
+  .row .amount { font-weight: 650; font-size: 13.5px; white-space: nowrap; }
+  .row.subtotal { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 10px; }
+  .fineprint { font-size: 11px; color: var(--ink-3); line-height: 1.45; margin-top: 3px; }
+  .frame .fineprint + .row { margin-top: 10px; }
+
+  /* ecological box — deliberately outside and unlike the price frames */
+  .ecobox {
+    border: 1px dashed var(--eco-border); border-radius: 6px;
+    background: var(--paper-2); padding: 12px 14px; margin-top: 20px;
+  }
+  .ecobox h3 { font-size: 13px; font-weight: 650; color: var(--ink-2); }
+  .ecobox .tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--ink-3); margin-bottom: 8px;
+  }
+  .ecobox .big { font-size: 17px; font-weight: 650; color: var(--ink); }
+  .ecobox p { font-size: 12px; margin-top: 6px; }
+  details { margin-top: 6px; }
+  summary { font-size: 11px; color: var(--ink-2); cursor: pointer; }
+  details li { font-size: 11px; color: var(--ink-2); margin: 4px 0 0 16px; }
+
+  /* scenario */
+  .scenario { border: 1px solid var(--hairline); border-radius: 6px;
+              padding: 12px 14px; background: var(--paper); }
+  .scenario h3 { font-size: 13px; font-weight: 650; }
+  .scenario .disclaimer {
+    display: inline-block; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--coastal); border: 1px solid var(--coastal);
+    border-radius: 3px; padding: 0 5px; margin-left: 6px; transform: translateY(-1px);
+  }
+  .scenario input[type=range] { width: 100%; accent-color: var(--accent); margin: 12px 0 4px; }
+  .scenario .readout { font-size: 13px; }
+  .scenario .readout b { font-size: 15px; }
+
+  footer { margin-top: 26px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+  footer p { font-size: 10.5px; color: var(--ink-3); line-height: 1.5; margin-bottom: 7px; }
+
+  /* map furniture */
+  .legend {
+    background: rgba(252,252,251,0.94); border: 1px solid var(--hairline);
+    border-radius: 6px; padding: 9px 11px; font: 11px/1.4 system-ui, sans-serif;
+    color: var(--ink-2); box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  }
+  .legend .bar {
+    height: 9px; width: 150px; border-radius: 2px; position: relative;
+    background: linear-gradient(to right, #96d5cf, #6bc0b8, #43a49c, #23837c, #0e615b);
+    margin: 5px 0 3px;
+  }
+  .legend .thresh {
+    position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink);
+    left: 71%;
+  }
+  .legend .scale-row { display: flex; justify-content: space-between; width: 150px;
+    position: relative; }
+  .legend .scale-row .t {
+    position: absolute; left: 71%; transform: translateX(-50%); color: var(--ink); }
+  .legend .bed-key { margin-top: 7px; }
+  .legend .bed-swatch {
+    display: inline-block; width: 11px; height: 11px; margin-right: 5px;
+    background: rgba(245,158,11,0.55); border: 2px solid #7c2d12;
+    transform: translateY(2px);
+  }
+  #offline-note {
+    position: absolute; z-index: 1000; left: 50%; transform: translateX(-50%);
+    bottom: 14px; background: rgba(28,28,26,0.85); color: #fff;
+    font-size: 11.5px; padding: 5px 12px; border-radius: 4px; display: none;
+  }
+  .leaflet-popup-content { font: 12px/1.5 system-ui, sans-serif; margin: 10px 12px; }
+  .leaflet-popup-content h4 { font-size: 12.5px; margin-bottom: 4px; }
+  .leaflet-popup-content table { border-collapse: collapse; margin-top: 4px; }
+  .leaflet-popup-content td, .leaflet-popup-content th {
+    padding: 1px 8px 1px 0; text-align: left; font-weight: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .leaflet-popup-content th { color: var(--ink-3); }
+  .popup-note { color: var(--ink-3); font-size: 11px; margin-top: 4px; }
+
+  @media (max-width: 760px) {
+    #app { flex-direction: column; }
+    #panel { width: 100%; height: 55%; border-right: none; border-bottom: 1px solid var(--hairline); }
+    #map { height: 45%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>The Invisible Shield</h1>
+    <p class="subtitle">Valuing the kelp habitat of Roaringwater Bay, West Cork,
+      as natural infrastructure — prototype demonstrator, Ocean Hackathon Cork 2026.</p>
+    <p class="buildstamp">Built <span data-build></span> from the project evidence base.
+      Prototype: 48-hour-hackathon simplifications are labelled where they occur.</p>
+
+    <section>
+      <h2>Map layers</h2>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-suit" checked>
+          <span class="name"><span class="swatch" style="background:#43a49c"></span>
+            Subtidal habitat suitability (modelled)</span></label>
+        <p class="caption">Suitability model v2 (depth, slope, curvature, wave fetch;
+          leave-one-site-out AUC <span data-auc></span>). Trained on NPWS-mapped
+          <i>Laminaria</i> reef at five SW-coast SACs; shown only on mapped reef inside
+          the model's training range — <span data-ncells></span> of
+          <span data-ntotal></span> grid cells (50&nbsp;m) in this area qualify.</p>
+      </div>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-bed" checked>
+          <span class="name"><span class="swatch" style="background:rgba(245,158,11,.55);border:2px solid #7c2d12"></span>
+            Modelled kelp bed — 1.75&nbsp;ha</span></label>
+        <p class="caption">Seven 50&nbsp;m model cells off Sherkin Island passing the
+          depth and suitability gates. A model output (subtidal
+          <i>Laminaria hyperborea</i>), <b>not</b> a satellite detection or a survey.</p>
+      </div>
+      <div class="layer disabled">
+        <label><input type="checkbox" disabled>
+          <span class="name">Intertidal macroalgae (Sentinel-2)</span></label>
+        <p class="caption">Not in this build: no detection-extent product exists in the
+          project outputs yet. When it exists it is species-agnostic <i>intertidal</i>
+          macroalgae — a different product from the subtidal model above, and the two
+          are never merged.</p>
+      </div>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-sites">
+          <span class="name"><span class="swatch" style="background:#334155;border-radius:50%"></span>
+            Dive survey sites (biodiversity)</span></label>
+        <p class="caption">OBIS/Seasearch dive records behind the biodiversity screen;
+          circle size = indicator taxa found at the site (of
+          <span data-indtotal></span>).</p>
+      </div>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-epa">
+          <span class="name"><span class="swatch" style="background:none;border:1.5px dashed #3f3f46"></span>
+            EPA waterbody status (WFD)</span></label>
+        <p class="caption">EPA Water Framework Directive coastal waterbodies
+          (CC&nbsp;BY&nbsp;4.0), reprojected from Irish Grid. Click a waterbody for its
+          cycle-by-cycle status.</p>
+      </div>
+      <div class="layer disabled">
+        <label><input type="checkbox" disabled>
+          <span class="name">Coastal flood extents (OPW)</span></label>
+        <p class="caption">Withheld: the OPW flood-map licence is
+          CC&nbsp;BY-NC-ND&nbsp;4.0 and re-use clearance is pending
+          (flood_data@opw.ie). Nothing derived from that layer is shown.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>What is this habitat worth?</h2>
+
+      <div class="frame fisheries">
+        <h3>Fisheries support — annual</h3>
+        <div class="row"><span class="what">Velvet crab <i>(Necora puber)</i></span>
+          <span class="amount" data-crab></span></div>
+        <p class="fineprint">±1&nbsp;SD <span data-crab-range></span>. Landings value
+          × kelp-dependency 0.43 (Piñeiro-Corbeira et&nbsp;al. 2025). High confidence.</p>
+        <div class="row"><span class="what">European lobster <i>(Homarus gammarus)</i></span>
+          <span class="amount" data-lobster></span></div>
+        <p class="fineprint">GEAK low band — expert judgement with written justification;
+          the species is absent from the published dependency set.</p>
+        <div class="row subtotal"><span class="what">Fisheries subtotal</span>
+          <span class="amount" data-subtotal></span></div>
+        <p class="fineprint">The only subtotal on this panel. Values for different
+          service types are never summed — that would double-count.</p>
+      </div>
+
+      <div class="frame coastal">
+        <h3>Coastal protection — this frontage</h3>
+        <div class="row"><span class="what">Avoided damage</span>
+          <span class="amount" data-avoided></span></div>
+        <p class="fineprint">Checked, not assumed: <span data-avoided-reason></span>
+          (screen of buildings behind the modelled bed).</p>
+        <div class="row"><span class="what">Rock-armour replacement rate, Ireland</span>
+          <span class="amount" data-replacement></span></div>
+        <p class="fineprint">OPW-funded schemes, 2024 (range <span data-replacement-range></span>).
+          Shown as a <b>counterfactual illustration — not a value</b>: replacement cost
+          requires demonstrated demand (Shabman &amp; Batie), and that test fails here.</p>
+        <div class="row"><span class="what">Modelled wave attenuation by the bed</span>
+          <span class="amount"><span data-att-h></span> height / <span data-att-e></span> energy</span></div>
+        <p class="fineprint">Field coefficients for subtidal <i>L.&nbsp;hyperborea</i> on
+          exposed Atlantic coasts (Dubi &amp; Tørum 1996; Mork 1996; Løvås &amp; Tørum
+          2001), applied along four wave axes. Physical effect, shown without a
+          euro figure.</p>
+      </div>
+
+      <div class="scenario">
+        <h3>If the bed declines
+          <span class="disclaimer">a tool, not a prediction</span></h3>
+        <input type="range" id="loss" min="0" max="100" step="5" value="25"
+               aria-label="Percent of bed lost">
+        <p class="readout">If <b id="loss-pct">25%</b> of this bed's fisheries support
+          is lost&nbsp;→ <b id="loss-eur"></b>/yr of fisheries value at risk.</p>
+        <p class="fineprint">Assumes fisheries value falls in proportion to habitat
+          loss. That proportionality is <b>our prototype simplification</b>, not a
+          published dose–response.</p>
+      </div>
+
+      <div class="ecobox">
+        <p class="tag">Ecological status — non-monetary, kept outside the € panel</p>
+        <h3>Biodiversity</h3>
+        <p><span class="big" data-biodiv></span> indicator taxa of the
+          <i>L.&nbsp;hyperborea</i> forest indicator set (Schoenrock et&nbsp;al. 2020)
+          found in West Cork dive records.</p>
+        <h3 style="margin-top:12px">Decline</h3>
+        <p data-decline></p>
+        <details>
+          <summary>Four limitations that travel with this statement</summary>
+          <ul id="decline-limits"></ul>
+        </details>
+      </div>
+    </section>
+
+    <footer>
+      <p><b>Sources &amp; attribution.</b> Contains Irish Public Sector Data
+        (Geological Survey Ireland &amp; Marine Institute) licensed under a Creative
+        Commons Attribution 4.0 International (CC&nbsp;BY&nbsp;4.0) licence (INFOMAR
+        bathymetry &amp; substrate, model inputs).</p>
+      <p>Copyright Government of Ireland. Training labels from the NPWS Reef
+        Inventory, National Parks and Wildlife Service, Department of Housing, Local
+        Government and Heritage, licensed for re-use under CC&nbsp;BY&nbsp;4.0.</p>
+      <p>Water Framework Directive waterbody and status data: Environmental
+        Protection Agency, Ireland, CC&nbsp;BY&nbsp;4.0. Wave-fetch layer: Burrows,
+        M.T. (method: Burrows et&nbsp;al. 2008, MEPS 353:1–12). Biodiversity records:
+        OBIS / Seasearch Ireland, per-dataset licences.</p>
+      <p>Basemap © OpenStreetMap contributors. Built with Leaflet 1.9.4
+        (BSD-2-Clause), vendored locally — the map opens and renders its own layers
+        without a network connection.</p>
+    </footer>
+  </aside>
+
+  <div id="map">
+    <div id="offline-note">Basemap tiles unavailable (offline) — project layers still shown.</div>
+  </div>
+</div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script>
+"use strict";
+const D = /*__MAP_DATA__*/null;
+if (!D) {
+  document.body.innerHTML = "<p style='padding:2em'>Build error: no embedded data.</p>";
+  throw new Error("MAP_DATA missing — open the built outputs/map/index.html, not the template");
+}
+
+const L_ = D.locked;
+const eur = n => "€" + Math.round(n).toLocaleString("en-IE");
+
+/* ---------- panel values: every number comes from the locked block ---------- */
+document.querySelector("[data-build]").textContent = D.build_date;
+document.querySelector("[data-auc]").textContent = L_.model_auc.toFixed(3);
+document.querySelector("[data-ncells]").textContent = D.suitability.cells.length;
+document.querySelector("[data-ntotal]").textContent = D.suitability.n_total_in_aoi.toLocaleString("en-IE");
+document.querySelector("[data-indtotal]").textContent = L_.indicator_total;
+document.querySelector("[data-crab]").textContent = eur(L_.crab_eur_yr) + "/yr";
+document.querySelector("[data-crab-range]").textContent =
+  eur(L_.crab_sd_low) + "–" + eur(L_.crab_sd_high);
+document.querySelector("[data-lobster]").textContent = eur(L_.lobster_eur_yr) + "/yr";
+document.querySelector("[data-subtotal]").textContent = L_.fisheries_subtotal_label;
+document.querySelector("[data-avoided]").textContent = L_.avoided_damage;
+document.querySelector("[data-avoided-reason]").textContent = L_.avoided_damage_reason;
+document.querySelector("[data-replacement]").textContent =
+  eur(L_.replacement_rate_eur_m) + "/m";
+document.querySelector("[data-replacement-range]").textContent =
+  eur(L_.replacement_range[0]) + "–" + eur(L_.replacement_range[1]) + "/m";
+document.querySelector("[data-att-h]").textContent = L_.wave_height_attenuation_pct + "%";
+document.querySelector("[data-att-e]").textContent = L_.wave_energy_reduction_pct + "%";
+document.querySelector("[data-biodiv]").textContent = L_.biodiversity;
+document.querySelector("[data-decline]").textContent = L_.decline_sentence;
+document.getElementById("decline-limits").innerHTML =
+  L_.decline_limitations.map(t => "<li>" + t + "</li>").join("");
+
+/* ---------- scenario slider: crab + lobster rows, nothing else ---------- */
+const fisheriesTotal = L_.crab_eur_yr + L_.lobster_eur_yr;
+const slider = document.getElementById("loss");
+function updateScenario() {
+  const pct = Number(slider.value);
+  document.getElementById("loss-pct").textContent = pct + "%";
+  const risk = Math.round(fisheriesTotal * pct / 100 / 1000) * 1000;
+  document.getElementById("loss-eur").textContent = "≈ " + eur(risk);
+}
+slider.addEventListener("input", updateScenario);
+updateScenario();
+
+/* ---------- map ---------- */
+const bbox = D.aoi.bbox; // lon_min, lat_min, lon_max, lat_max
+const map = L.map("map", { zoomControl: true });
+map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]]);
+L.control.scale({ imperial: false }).addTo(map);
+
+let tileFailed = false;
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: "© OpenStreetMap contributors",
+}).on("tileerror", () => {
+  if (!tileFailed) { tileFailed = true;
+    document.getElementById("offline-note").style.display = "block"; }
+}).addTo(map);
+
+map.createPane("epaPane").style.zIndex = 410;
+map.createPane("suitPane").style.zIndex = 430;
+map.createPane("bedPane").style.zIndex = 450;
+map.createPane("sitePane").style.zIndex = 470;
+
+/* suitability: sequential single-hue ramp, light = low (recedes), dark = high */
+const RAMP = ["#96d5cf", "#6bc0b8", "#43a49c", "#23837c", "#0e615b"];
+function rampColor(s) {
+  const x = Math.min(Math.max(s, 0), 1) * (RAMP.length - 1);
+  return RAMP[Math.round(x)];
+}
+/* SVG, not canvas: a canvas renderer would blanket the map and swallow the
+   clicks meant for the EPA polygons in the pane beneath it. */
+const dLat = D.suitability.grid_m / 111320;
+const suitLayer = L.layerGroup(D.suitability.cells.map(([lon, lat, s]) => {
+  const dLon = dLat / Math.cos(lat * Math.PI / 180);
+  return L.rectangle(
+    [[lat - dLat / 2, lon - dLon / 2], [lat + dLat / 2, lon + dLon / 2]],
+    { pane: "suitPane", stroke: false,
+      fillColor: rampColor(s), fillOpacity: 0.8 })
+    .bindPopup("<h4>Modelled suitability: " + s.toFixed(2) + "</h4>" +
+      "<div class='popup-note'>50 m cell on mapped reef, inside the model's " +
+      "training range. Operating threshold " +
+      D.suitability.threshold.toFixed(2) + " (specificity 0.9).</div>");
+}));
+
+/* the 1.75 ha bed */
+const bedLayer = L.geoJSON(D.bed, {
+  pane: "bedPane",
+  style: { color: "#7c2d12", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.55 },
+  onEachFeature: (f, ly) => ly.bindPopup(
+    "<h4>Modelled kelp bed cell</h4>" +
+    "Depth " + f.properties.depth_m + " m · cluster " + f.properties.cluster +
+    "<div class='popup-note'>One of 7 × 50 m cells (1.75 ha total) passing the " +
+    "depth and suitability gates. Model output, not a survey.</div>"),
+});
+
+/* EPA waterbodies */
+const epaLayer = L.geoJSON(D.epa, {
+  pane: "epaPane",
+  style: f => ({
+    color: "#3f3f46", weight: f.properties.code === "IE_SW_140_0000" ? 2 : 1.2,
+    dashArray: "5 4", fillColor: "#3f3f46",
+    fillOpacity: f.properties.code === "IE_SW_140_0000" ? 0.07 : 0.03 }),
+  onEachFeature: (f, ly) => {
+    const rows = Object.entries(f.properties.status).map(([cycle, st]) =>
+      "<tr><td>" + cycle + "</td><td>" + st.overall + "</td><td>" +
+      (st.macroalgae ? st.macroalgae : "—") + "</td></tr>").join("");
+    ly.bindPopup("<h4>" + f.properties.name + "</h4>" +
+      "<span class='popup-note'>" + f.properties.code + " — EPA WFD status</span>" +
+      "<table><tr><th>Cycle</th><th>Overall</th><th>Macroalgae</th></tr>" +
+      rows + "</table>" +
+      "<div class='popup-note'>“—” = element not published for that cycle.</div>");
+  },
+});
+
+/* dive sites */
+const siteLayer = L.layerGroup(D.biodiversity.sites.map(s =>
+  L.circleMarker([s.lat, s.lon], {
+    pane: "sitePane", radius: 3 + Math.sqrt(s.indicators) * 1.8,
+    color: "#fcfcfb", weight: 1.5, fillColor: "#334155", fillOpacity: 0.85 })
+    .bindPopup("<h4>Dive survey site</h4>" +
+      s.records + " records · " + s.species + " taxa · <b>" + s.indicators +
+      " of " + D.biodiversity.total + "</b> indicator taxa" +
+      "<div class='popup-note'>OBIS/Seasearch records; site position is the " +
+      "survey coordinate.</div>")));
+
+/* toggles */
+function wire(id, layer, on) {
+  const cb = document.getElementById(id);
+  cb.checked = on;
+  if (on) layer.addTo(map);
+  cb.addEventListener("change", () =>
+    cb.checked ? layer.addTo(map) : map.removeLayer(layer));
+}
+wire("ly-suit", suitLayer, true);
+wire("ly-bed", bedLayer, true);
+wire("ly-epa", epaLayer, false);
+wire("ly-sites", siteLayer, false);
+
+/* legend */
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = () => {
+  const div = L.DomUtil.create("div", "legend");
+  div.innerHTML =
+    "Modelled suitability (0–1)" +
+    "<div class='bar'><span class='thresh' title='operating threshold'></span></div>" +
+    "<div class='scale-row'><span>0</span><span class='t'>0.71</span><span>1</span></div>" +
+    "<div class='bed-key'><span class='bed-swatch'></span>Modelled bed — 1.75 ha</div>";
+  return div;
+};
+legend.addTo(map);
+</script>
+</body>
+</html>
