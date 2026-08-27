@@ -131,6 +131,7 @@ their transitive dependencies.
 | Google Earth Engine                                                       | Google                                                                             | Earth Engine Terms of Service                                              | **UNREAD**                                                                                           | community / non-commercial tier; terms not read |
 | EPA WFD coastal waterbodies + status cycles (`outputs/epa_cwb/*.geojson`, embedded in the step 6 map) | Environmental Protection Agency, Ireland | CC BY 4.0 | **VERIFIED 2026-08-17** — data.gov.ie dataset page states "published under the terms of the license Creative Commons Attribution 4.0 International (CC BY 4.0)". The gis.epa.ie GeoNetwork record timed out on the same day; re-confirm there when reachable. |
 | OpenStreetMap basemap tiles (runtime only, step 6 map)                    | OpenStreetMap contributors                                                         | ODbL 1.0 (data); tiles per OSMF tile-usage policy                          | **VERIFIED, decision recorded** — tiles are DISPLAY ONLY, fetched at runtime, never stored, and no OSM geometry or attribute enters our data or valuation database, so the ODbL share-alike obligation is not triggered. Attribution shown on the map itself. The map renders its own layers without tiles when offline. |
+| OpenStreetMap data via Overpass API (building centroids, `natural=coastline` ways, `place` nodes) — receptor SCREENING input only (`src/mizen_receptor_screen.py`, `src/wide_receptor_screen.py`) | OpenStreetMap contributors | ODbL 1.0 | **VERIFIED, decision recorded 2026-08-27** — unlike the tiles row above, here OSM geometry DOES enter our files: raw Overpass JSON is cached under `data/osm/` and the cluster tables under `outputs/wide_receptor_screen*.csv` are ODbL *derivative databases*. Both directories are git-ignored and unpublished. If any screen table or cluster location is ever published (slide, map, note outside the repo), it must carry "© OpenStreetMap contributors, ODbL" and the derived table must be offered under ODbL. Nothing OSM-derived enters the valuation figures (all €0 / €/yr rows are OSM-free). Overpass usage: custom User-Agent, ≤5 requests per run, results cached. |
 
 **On the NPWS entry.** NPWS states that it publishes its data holdings, where
 possible, as Open Data under CC BY 4.0, and its own map services carry the
@@ -185,9 +186,11 @@ publisher specifies it. The canonical copies live in `common.ATTRIBUTION`.
 > Protection Agency, Ireland. Licensed under Creative Commons Attribution 4.0
 > International (CC BY 4.0).
 
-**OpenStreetMap (basemap tiles on the step 6 map)**
+**OpenStreetMap (basemap tiles on the step 6 map; Overpass data in the receptor screens)**
 
-> © OpenStreetMap contributors.
+> © OpenStreetMap contributors. Data available under the Open Database
+> Licence (ODbL 1.0). Any published screen table derived from it is a
+> derivative database under ODbL.
 
 **Marine Institute tide gauges**
 
