@@ -53,6 +53,13 @@ ROOTS = [
     "requests",
     "earthengine-api",
     "pandas",
+    # Added 2026-08-27. scikit-learn has been imported by the receptor screens
+    # since 2026-08-11 (sklearn.cluster.DBSCAN clusters shore-proximate
+    # buildings into settlements) but was never in this root set, so it was
+    # absent from the generated table - a gap in a MANDATORY compliance
+    # document, not a cosmetic one. Found while extending the screen
+    # nationally.
+    "scikit-learn",
 ]
 
 # Distributions that ship with CPython or are packaging plumbing rather than a

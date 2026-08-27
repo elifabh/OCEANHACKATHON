@@ -134,6 +134,18 @@ HAB_SEARCH_M = 1000.0    # habitat must be within this of the cluster centroid
 FETCH_EXCLUSION_MAX = 3.73   # inner_roaringwater maximum (mizen screen)
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Mirrors, tried in order when the primary returns 429/504. Added
+# 2026-08-27 for the national run: the primary was returning gateway
+# timeouts and 93 queries against one degraded instance is not viable.
+# Every mirror serves the same OSM database, and every response is
+# cached by query hash, so which mirror answered cannot change a result.
+OVERPASS_MIRRORS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+)
+# overpass.private.coffee was tried on 2026-08-27 and returned HTTP 500 to
+# every request, including queries the primary answered in 2 s. Dropped: a
+# mirror that always fails only burns retry attempts.
 UA = "OceanHackathonCork2026/kelp-prototype (elif, MTU)"
 ITM = "EPSG:2157"
 BNG = "EPSG:27700"
@@ -151,7 +163,7 @@ CONTROL_MATCH_M = 400.0
 OSM_CACHE = Path("data/osm")
 
 
-def overpass(query: str, retries: int = 4) -> dict:
+def overpass(query: str, retries: int = 12) -> dict:
     """POST to Overpass; cache the raw JSON under data/osm/ keyed by query hash
     so a re-run (e.g. after a parameter change) does not re-download ~90k
     buildings and can be reproduced against the same OSM snapshot."""
@@ -162,18 +174,27 @@ def overpass(query: str, retries: int = 4) -> dict:
     if cached.exists():
         return json.loads(cached.read_text(encoding="utf-8"))
     for attempt in range(1, retries + 1):
+        url = OVERPASS_MIRRORS[(attempt - 1) % len(OVERPASS_MIRRORS)]
         try:
-            r = requests.post(OVERPASS_URL, data={"data": query},
+            r = requests.post(url, data={"data": query},
                               headers={"User-Agent": UA}, timeout=300)
             r.raise_for_status()
             payload = r.json()
+            if "elements" not in payload:
+                raise RuntimeError(f"no 'elements' key from {url}")
             cached.write_text(json.dumps(payload), encoding="utf-8")
             return payload
         except Exception as exc:                        # noqa: BLE001
             if attempt == retries:
                 raise RuntimeError(f"Overpass failed after {retries} attempts: {exc}") from exc
-            wait = 15 * attempt
-            print(f"   Overpass attempt {attempt} failed ({exc}); retry in {wait}s",
+            # 429 = the public instance is rate-limiting us. That needs a much
+            # longer wait than a transient error. Added 2026-08-27 for the
+            # national run, which issues ~60 queries instead of ~9. Backoff
+            # only; it cannot change any cached or returned result.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            wait = 30 * attempt if status in (429, 504) else 15 * attempt
+            print(f"   Overpass attempt {attempt} on {url} failed ({exc}); "
+                  f"retry in {wait}s on the next mirror",
                   file=sys.stderr)
             time.sleep(wait)
     raise AssertionError("unreachable")
