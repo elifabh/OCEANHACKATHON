@@ -3,6 +3,32 @@
 overpass_audit.py -- find and remove the cached Overpass responses that a
 bad mirror poisoned.
 
+SUPERSEDED 2026-08-28 (session 2) by `overpass_cache_audit.py`. Kept, and kept
+runnable, because it is what produced the quarantine that the second audit
+compares against -- deleting it would delete the record of what was done.
+
+READ THIS BEFORE BELIEVING THE DOCSTRING BELOW. The claim further down that
+"it never touches a cached response that has elements: osm.ch could only
+return too few, never too many, so a non-empty cache entry cannot have come
+from it" is WRONG as a general rule, and it is the rule that decided which
+files this script opened:
+
+  * Asked `out count;`, osm.ch returns ONE element carrying total="0" -- a
+    non-empty response whose content is a zero. This script would have walked
+    past it. (No such entry was in the cache. The hole was real; the damage
+    was not.)
+  * Emptiness is a property of the answer. Provenance is a property of the
+    server. Every Overpass response carries the identity of the instance that
+    produced it and this cache preserved it all along -- osm.ch stamps
+    generator "Overpass API 0.7.59.1 2a9d9642" and a timestamp_osm_base of
+    "116721", an integer where every legitimate instance reports an ISO-8601
+    database time. Testing that needs no argument about what the mirror can
+    and cannot return.
+
+This script also quarantined FOUR entries that are not from the banned
+instance at all -- genuine empties from the primary, caught by its
+all-empties rule. An over-quarantine is an error too.
+
 WHAT HAPPENED
 -------------
 `overpass.osm.ch` was added to `OVERPASS_MIRRORS` on 2026-08-28 for the
