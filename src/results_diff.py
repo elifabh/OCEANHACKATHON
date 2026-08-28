@@ -112,7 +112,8 @@ def _same(a, b) -> bool:
         return str(a) == str(b)
 
 
-def diff_table(name: str, before_dir: Path, log) -> dict:
+def diff_table(name: str, before_dir: Path, log,
+               fresh_after: datetime | None = None) -> dict:
     now_path, key, cols = TABLES[name]
     old_path = before_dir / name
     rec = {"table": name, "status": None, "row_changes": [],
@@ -126,6 +127,26 @@ def diff_table(name: str, before_dir: Path, log) -> dict:
             % name)
         rec["status"] = "missing_now"
         return rec
+    # STALE-TABLE GUARD. Without this, a table that the re-run never
+    # regenerated compares equal to its own snapshot and is reported
+    # IDENTICAL -- a pass earned by not having run. That is the exact failure
+    # this project hit on 2026-08-28, when Phase B read receptor counts from a
+    # drilldown that predated the mirror fix. A table that did not move
+    # BECAUSE IT WAS NOT REBUILT is not the same finding as one that did not
+    # move because its inputs held, and the two must never print the same way.
+    rec["mtime_utc"] = datetime.fromtimestamp(
+        now_path.stat().st_mtime, tz=timezone.utc).isoformat(
+            timespec="seconds")
+    rec["regenerated"] = (fresh_after is None or
+                          datetime.fromtimestamp(now_path.stat().st_mtime,
+                                                 tz=timezone.utc)
+                          >= fresh_after)
+    if not rec["regenerated"]:
+        log("   %-34s STALE      not rebuilt since %s -- NOT COMPARED"
+            % (name, fresh_after.isoformat(timespec="minutes")))
+        rec["status"] = "stale"
+        return rec
+
     a = pd.read_csv(old_path)
     b = pd.read_csv(now_path)
     if key not in a.columns or key not in b.columns:
@@ -172,7 +193,14 @@ def main() -> int:
     ap.add_argument("--label-before", default="before")
     ap.add_argument("--label-after", default="after")
     ap.add_argument("--out", default=str(OUT / "results_diff"))
+    ap.add_argument("--fresh-after", default=None,
+                    help="ISO UTC time; a table not rebuilt since then is "
+                         "reported STALE instead of compared. Pass the "
+                         "re-run's start time.")
     args = ap.parse_args()
+    fresh_after = (datetime.fromisoformat(args.fresh_after)
+                   .replace(tzinfo=timezone.utc)
+                   if args.fresh_after else None)
 
     before = Path(args.before)
     lines: list = []
@@ -193,7 +221,21 @@ def main() -> int:
     log("the finding when the inputs were re-verified and held.")
     log("")
 
-    recs = [diff_table(n, before, log) for n in TABLES]
+    if fresh_after:
+        log("staleness gate: a table not rebuilt since %s is reported STALE"
+            % fresh_after.isoformat(timespec="minutes"))
+        log("rather than compared. A table that did not move because it was")
+        log("never rebuilt is not the same finding as one that did not move")
+        log("because its inputs held.")
+        log("")
+    recs = [diff_table(n, before, log, fresh_after) for n in TABLES]
+
+    stale = [r["table"] for r in recs if r["status"] == "stale"]
+    if stale:
+        log("")
+        log("!! %d TABLE(S) NOT REBUILT BY THIS RUN: %s"
+            % (len(stale), ", ".join(stale)))
+        log("   They are NOT compared and NOT reported as unchanged.")
 
     log("")
     log("=" * 78)
@@ -219,7 +261,12 @@ def main() -> int:
             for c in by_row[row]:
                 log("      %-42s %r  ->  %r"
                     % (c["column"], c["before"], c["after"]))
-    if not any_change:
+    if not any_change and stale:
+        log("")
+        log("   Nothing changed in the tables that WERE rebuilt, but %d were"
+            % len(stale))
+        log("   not rebuilt at all. This run cannot say the results held.")
+    elif not any_change:
         log("")
         log("   NOTHING CHANGED IN ANY TABLE.")
         log("")

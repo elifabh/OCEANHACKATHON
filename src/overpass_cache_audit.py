@@ -572,13 +572,31 @@ def phase_compare(log) -> list:
         log("no holdout manifest; run --phase holdout first.")
         return []
     man = json.loads(HOLD_MANIFEST.read_text(encoding="utf-8"))
+    sources = {k: (HOLD, v) for k, v in man["entries"].items()}
+
+    # The QUARANTINE is compared too, and it is where the poisoning
+    # measurement actually lives. The 21 banned-instance entries and the 4
+    # entries the first audit over-quarantined were removed from the cache
+    # before this session, so they are not in the holdout manifest -- and
+    # leaving them out would mean comparing everything EXCEPT the files known
+    # to be bad.
+    for qd in (QUAR, QUAR2):
+        if not qd.exists():
+            continue
+        for f in sorted(qd.glob("overpass_*.json")):
+            if f.name.endswith(".meta.json"):
+                continue
+            r = classify(f)
+            sources.setdefault(r["key"], (qd, r))
+
     rows = []
-    for key, old in man["entries"].items():
+    for key, (srcdir, old) in sources.items():
         fresh_p = OSM_CACHE / ("overpass_%s.json" % key)
-        held_p = HOLD / old["file"]
+        held_p = srcdir / old["file"]
         rec = {"key": key, "cached_n": old.get("n_elements"),
                "cached_empty": bool(old.get("empty_claim")),
-               "was_instance": old.get("instance")}
+               "was_instance": old.get("instance"),
+               "held_in": srcdir.name}
         if not fresh_p.exists():
             # Nothing re-asked this query. That is information, not a pass:
             # it means no caller in the current pipeline issues it any more.
@@ -608,7 +626,10 @@ def phase_compare(log) -> list:
     v = {}
     for r in rows:
         v[r["verdict"]] = v.get(r["verdict"], 0) + 1
-    log("held out: %d" % len(rows))
+    log("compared: %d entries  (%d held out this session, %d already in "
+        "quarantine)"
+        % (len(rows), sum(1 for r in rows if r["held_in"] == HOLD.name),
+           sum(1 for r in rows if r["held_in"] != HOLD.name)))
     for k in sorted(v):
         log("   %-13s %d" % (k, v[k]))
     log("")
@@ -622,9 +643,36 @@ def phase_compare(log) -> list:
     zo = [r for r in rows if r.get("zero_overturned")]
     log("")
     log("cached-zero OVERTURNED by a verified endpoint: %d" % len(zo))
-    for r in zo:
-        log("   %s  cached %d -> fresh %d" % (r["key"], r["cached_n"],
-                                              r["fresh_n"]))
+    for r in sorted(zo, key=lambda x: -x["fresh_n"]):
+        log("   %s  cached %d -> fresh %-6d  (%s)"
+            % (r["key"], r["cached_n"], r["fresh_n"], r["was_instance"]))
+
+    banned = [r for r in rows if r.get("was_instance") == "BANNED"]
+    log("")
+    log("THE BANNED INSTANCE'S OWN ENTRIES: %d" % len(banned))
+    log("   re-asked and overturned : %d"
+        % sum(1 for r in banned if r.get("zero_overturned")))
+    log("   re-asked, still empty   : %d  (the query really does return "
+        "nothing; the mirror happened to be right by accident)"
+        % sum(1 for r in banned if r["verdict"] != "NOT_REASKED"
+              and not r.get("zero_overturned")))
+    log("   NOT re-asked            : %d  (no current caller issues this "
+        "query)" % sum(1 for r in banned if r["verdict"] == "NOT_REASKED"))
+    log("   total elements recovered: %d"
+        % sum(r.get("fresh_n", 0) for r in banned))
+
+    over = [r for r in rows
+            if r["held_in"] == QUAR.name and r.get("was_instance") != "BANNED"]
+    if over:
+        log("")
+        log("OVER-QUARANTINED BY THE FIRST AUDIT: %d" % len(over))
+        log("   These are empties from a VERIFIED endpoint that were "
+            "quarantined for being empty.")
+        for r in over:
+            log("   %s  cached %d -> %s"
+                % (r["key"], r["cached_n"],
+                   ("fresh %d" % r["fresh_n"]) if r["verdict"] != "NOT_REASKED"
+                   else "NOT re-asked"))
     diff = [r for r in rows if r["verdict"] == "DIFFERS"]
     if diff:
         log("")
