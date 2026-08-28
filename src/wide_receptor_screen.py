@@ -137,14 +137,42 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # Mirrors, tried in order when the primary returns 429/504. Added
 # 2026-08-27 for the national run: the primary was returning gateway
 # timeouts and 93 queries against one degraded instance is not viable.
-# Every mirror serves the same OSM database, and every response is
-# cached by query hash, so which mirror answered cannot change a result.
+#
+# 2026-08-28, CORRECTION -- the claim that used to stand here, that "every
+# mirror serves the same OSM database ... so which mirror answered cannot
+# change a result", IS FALSE and was never tested.
+#
+#   overpass.osm.ch serves a SWITZERLAND-ONLY database. It answers HTTP 200
+#   with an empty element list for any Irish query -- no error, no `remark`,
+#   nothing a status check would catch. Measured 2026-08-28 with an
+#   `out count;` query on identical bboxes:
+#
+#       area              primary          osm.ch
+#       Bern, CH          (primary 5xx)    10 298 buildings
+#       Galway city, IE    4 837                 0
+#       Cork city, IE     22 294                 0
+#
+#   It was found because a coastline query over a LARGER bbox returned FEWER
+#   ways than the same query over a smaller one -- impossible for a correct
+#   endpoint, and only visible because both were compared.
+#
+# It is REMOVED, not demoted: a mirror that answers confidently and wrongly
+# is far worse than one that fails, because the wrong answer gets cached and
+# every later run reproduces it. maps.mail.ru was re-tested at the same time
+# and returns the correct 22 294, so it stays.
 OVERPASS_MIRRORS = (
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
+# Removed 2026-08-28: "https://overpass.osm.ch/api/interpreter"
+# Switzerland-only database, returns HTTP 200 + zero elements outside it.
+# See overpass_audit.py for the cache clean-up this made necessary.
+OVERPASS_REMOVED = {
+    "https://overpass.osm.ch/api/interpreter":
+        "Switzerland-only database; HTTP 200 with 0 elements for Irish "
+        "queries (verified 2026-08-28)",
+}
 # overpass.private.coffee was tried on 2026-08-27 and returned HTTP 500 to
 # every request, including queries the primary answered in 2 s. Dropped: a
 # mirror that always fails only burns retry attempts.
@@ -177,10 +205,59 @@ CONTROL_MATCH_M = 400.0
 OSM_CACHE = Path("data/osm")
 
 
-def overpass(query: str, retries: int = 12) -> dict:
+UNCONFIRMED_EMPTY_KEY = "_unconfirmed_empty"
+_EMPTY_STATS = {"confirmed": 0, "overturned": 0, "unconfirmed": 0}
+
+
+def _overpass_post(url: str, query: str, timeout: int = 300) -> dict:
+    r = requests.post(url, data={"data": query},
+                      headers={"User-Agent": UA}, timeout=timeout)
+    r.raise_for_status()
+    payload = r.json()
+    if "elements" not in payload:
+        raise RuntimeError(f"no 'elements' key from {url}")
+    # Overpass signals a server-side failure in `remark` while still
+    # returning HTTP 200 and an empty element list. Treat it as the error
+    # it is rather than as a finding.
+    rem = str(payload.get("remark") or "")
+    if rem and ("error" in rem.lower() or "timed out" in rem.lower()):
+        raise RuntimeError(f"Overpass remark from {url}: {rem[:120]}")
+    return payload
+
+
+def _confirm_empty(query: str, exclude: str) -> dict | None:
+    """Second opinion on an empty result, from a DIFFERENT endpoint.
+
+    Added 2026-08-28 after overpass.osm.ch was found answering Irish queries
+    with HTTP 200 and zero elements (see OVERPASS_MIRRORS). An empty result
+    is a claim about the world -- "there is no coastline here", "there are no
+    piers here" -- and this project's own rule is that zero features is a bug
+    until it is shown to be a finding. So an empty is not believed, and above
+    all is not CACHED, on one endpoint's word.
+
+    Returns the confirming payload (possibly non-empty, in which case the
+    empty was wrong), or None if no other endpoint could be reached.
+    """
+    for url in OVERPASS_MIRRORS:
+        if url == exclude:
+            continue
+        try:
+            return _overpass_post(url, query, timeout=180)
+        except Exception:                               # noqa: BLE001
+            continue
+    return None
+
+
+def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
     """POST to Overpass; cache the raw JSON under data/osm/ keyed by query hash
     so a re-run (e.g. after a parameter change) does not re-download ~90k
-    buildings and can be reproduced against the same OSM snapshot."""
+    buildings and can be reproduced against the same OSM snapshot.
+
+    An EMPTY response is confirmed on a second endpoint before it is returned
+    or cached (2026-08-28). An unconfirmable empty is returned marked and is
+    NOT written to the cache, so a later run re-asks rather than inheriting a
+    silence nobody checked.
+    """
     import hashlib
     OSM_CACHE.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha1(query.encode()).hexdigest()[:12]
@@ -190,12 +267,25 @@ def overpass(query: str, retries: int = 12) -> dict:
     for attempt in range(1, retries + 1):
         url = OVERPASS_MIRRORS[(attempt - 1) % len(OVERPASS_MIRRORS)]
         try:
-            r = requests.post(url, data={"data": query},
-                              headers={"User-Agent": UA}, timeout=300)
-            r.raise_for_status()
-            payload = r.json()
-            if "elements" not in payload:
-                raise RuntimeError(f"no 'elements' key from {url}")
+            payload = _overpass_post(url, query)
+            if confirm_empty and not payload.get("elements"):
+                alt = _confirm_empty(query, exclude=url)
+                if alt is None:
+                    _EMPTY_STATS["unconfirmed"] += 1
+                    print("   Overpass returned EMPTY on %s and no other "
+                          "endpoint could confirm it; NOT cached" % url,
+                          file=sys.stderr)
+                    payload = dict(payload)
+                    payload[UNCONFIRMED_EMPTY_KEY] = True
+                    return payload
+                if alt.get("elements"):
+                    _EMPTY_STATS["overturned"] += 1
+                    print("   Overpass EMPTY from %s OVERTURNED by a second "
+                          "endpoint (%d elements). Using the non-empty answer."
+                          % (url, len(alt["elements"])), file=sys.stderr)
+                    payload = alt
+                else:
+                    _EMPTY_STATS["confirmed"] += 1
             cached.write_text(json.dumps(payload), encoding="utf-8")
             return payload
         except Exception as exc:                        # noqa: BLE001
@@ -212,6 +302,32 @@ def overpass(query: str, retries: int = 12) -> dict:
                   file=sys.stderr)
             time.sleep(wait)
     raise AssertionError("unreachable")
+
+
+def mirror_coverage_selftest(verbose: bool = True) -> dict:
+    """Does every mirror actually hold Irish data?
+
+    The test that would have caught osm.ch on the day it was added, and that
+    should be run whenever a mirror is added. Counts buildings in a fixed
+    Cork city bbox; a mirror that answers 0 where the primary answers tens of
+    thousands is serving a different database, not the same one.
+    """
+    bb = "51.88,-8.50,51.91,-8.46"
+    q = '[out:json][timeout:180];(way["building"](%s););out count;' % bb
+    out = {}
+    for url in OVERPASS_MIRRORS:
+        try:
+            p = _overpass_post(url, q, timeout=120)
+            els = p.get("elements") or []
+            n = int((els[0].get("tags") or {}).get("total", 0)) if els else 0
+            out[url] = {"reachable": True, "cork_buildings": n,
+                        "holds_irish_data": n > 1000}
+        except Exception as exc:                        # noqa: BLE001
+            out[url] = {"reachable": False, "error": str(exc)[:120],
+                        "holds_irish_data": None}
+        if verbose:
+            print("   %-58s %s" % (url, out[url]))
+    return out
 
 
 def fetch_buildings(bands) -> gpd.GeoDataFrame:

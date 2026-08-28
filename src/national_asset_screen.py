@@ -176,7 +176,7 @@ BOX_HALF_M = 800.0                 # unchanged from the building screen
 BOXES_PER_QUERY = 5                # smaller than the building screen's 10:
                                    # `out geom` payloads are far larger than
                                    # `out center` ones
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 
 GLO30_BASE = "https://copernicus-dem-30m.s3.amazonaws.com"
 
@@ -552,23 +552,53 @@ def sample_points_along(geom, step: float = SAMPLE_STEP_M) -> list:
     return pts[:MAX_SAMPLES_PER_FEATURE]
 
 
-def seaward_point(geom, coast_u):
-    """The point of the receptor closest to the mapped coastline.
+N_SEAWARD_CANDIDATES = 6
 
-    This is where the per-receptor fetch is sampled. A 900 m coast road has
-    one end at the water and one end inland; asking "what water does this
-    face" at its midpoint would answer a question about the middle of a road.
+
+def seaward_fetch(geom, fs: FetchSampler):
+    """Where along this receptor is the water, and what is its fetch?
+
+    A 900 m coast road has one end at the water and one end inland; asking
+    "what water does this face" at its midpoint answers a question about the
+    middle of a road. So the fetch is sampled at the receptor's SEAWARD-MOST
+    point.
+
+    "Seaward-most" is defined by the FETCH RASTER, not by the OSM coastline.
+    That is deliberate. The first version used `natural=coastline` and it was
+    absent from 3 of the first 4 cluster boxes -- partly genuine (OSM maps
+    some Irish inlets as water bodies rather than coastline) and partly the
+    poisoned-mirror bug (see overpass_audit.py). A gate test that silently
+    degrades to "the middle of the feature" whenever a tag is missing is not
+    a test. The Burrows raster's sea cells are present everywhere on this
+    coast by construction, and `FetchSampler.sample` already reports the
+    distance to the nearest one.
+
+    Up to N_SEAWARD_CANDIDATES points are tried -- both ends, the
+    lowest-elevation sample, and an even spread -- and the one nearest a sea
+    cell wins. Bounded on purpose: sampling every 20 m point would be ~200k
+    raster window reads.
     """
     if geom is None or geom.is_empty:
-        return None
-    if coast_u is None:
-        return geom.representative_point()
-    try:
-        from shapely.ops import nearest_points
-        p, _ = nearest_points(geom, coast_u)
-        return p
-    except Exception:                                         # noqa: BLE001
-        return geom.representative_point()
+        return None, FetchSampler._empty()
+    pts = sample_points_along(geom, step=max(SAMPLE_STEP_M, 50.0))
+    if not pts:
+        rp = geom.representative_point()
+        return rp, fs.sample(rp.x, rp.y)
+    if len(pts) > N_SEAWARD_CANDIDATES:
+        idx = np.linspace(0, len(pts) - 1, N_SEAWARD_CANDIDATES).astype(int)
+        pts = [pts[i] for i in dict.fromkeys(idx.tolist())]
+    best_p, best_f, best_d = None, None, np.inf
+    for (x, y) in pts:
+        f = fs.sample(x, y)
+        d = f["dist_to_sea_m"]
+        if not np.isfinite(d):
+            continue
+        if d < best_d:
+            best_p, best_f, best_d = Point(x, y), f, d
+    if best_p is None:
+        rp = geom.representative_point()
+        return rp, fs.sample(rp.x, rp.y)
+    return best_p, best_f
 
 
 # ======================================================================
@@ -664,8 +694,7 @@ def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
             e = e[np.isfinite(e)]
             water = e == WATER_FLAT_VALUE
             land = e[~water]
-            sp = seaward_point(g, coast_itm)
-            f = fs.sample(sp.x, sp.y) if sp is not None else FetchSampler._empty()
+            sp, f = seaward_fetch(g, fs)
             gate = (np.isfinite(f["fetch_nearest_min"])
                     and f["fetch_nearest_min"] > FETCH_EXCLUSION_MAX)
             gate_lenient = (np.isfinite(f["fetch_nearest_max"])
