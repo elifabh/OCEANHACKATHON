@@ -141,11 +141,25 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 # cached by query hash, so which mirror answered cannot change a result.
 OVERPASS_MIRRORS = (
     "https://overpass-api.de/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
 # overpass.private.coffee was tried on 2026-08-27 and returned HTTP 500 to
 # every request, including queries the primary answered in 2 s. Dropped: a
 # mirror that always fails only burns retry attempts.
+#
+# 2026-08-28, national Phase B: the primary began returning 429 under the
+# per-site frontage queries and kumi.systems returned HTTP 500 to every
+# request (22 s each, so it was burning two of every twelve attempts). Two
+# further public instances were probed and answer the same query in under
+# 2.5 s: overpass.osm.ch and maps.mail.ru/osm/tools/overpass. They are placed
+# ahead of kumi, which is kept last rather than dropped because it has served
+# this project before and may recover. Networking only: every mirror serves
+# the same OSM database and every response is cached by query hash, so which
+# mirror answered still cannot change a result.
+# Probed 2026-08-28: overpass.osm.jp = SSL failure,
+# overpass.openstreetmap.ru = connect timeout. Neither added.
 UA = "OceanHackathonCork2026/kelp-prototype (elif, MTU)"
 ITM = "EPSG:2157"
 BNG = "EPSG:27700"
