@@ -114,6 +114,7 @@ OUT = REPO / "outputs" / "asset_screen"
 QUAR = OSM_CACHE / "quarantine_poisoned"
 QUAR2 = OSM_CACHE / "quarantine_audit2"
 LEDGER = OUT / "overpass_cache_audit_ledger.jsonl"
+HOLD = OSM_CACHE / "verify_holdout"
 
 # ---------------------------------------------------------------------------
 # The at-risk window
@@ -201,9 +202,13 @@ def phase_a(log) -> list:
     log("=" * 78)
     log("PHASE A -- classify every cached response (no network)")
     log("=" * 78)
+    # Every directory an entry can be in, including the holdout -- otherwise
+    # invalidating an entry would make it vanish from the audit that
+    # invalidated it, and the totals would silently shrink between phases.
     files = (sorted(OSM_CACHE.glob("overpass_*.json"))
              + sorted(QUAR.glob("overpass_*.json"))
-             + sorted(QUAR2.glob("overpass_*.json")))
+             + sorted(QUAR2.glob("overpass_*.json"))
+             + sorted(HOLD.glob("overpass_*.json")))
     files = [f for f in files if not f.name.endswith(".meta.json")]
     recs = [classify(f) for f in files]
 
@@ -211,10 +216,11 @@ def phase_a(log) -> list:
     log("at-risk window: %s .. %s  (wider than the evidence, deliberately)"
         % (WINDOW_OPEN.isoformat(timespec="minutes"),
            WINDOW_SHUT.isoformat(timespec="minutes")))
-    log("cache entries examined: %d  (%d live, %d quarantined)"
+    log("cache entries examined: %d  (%d live, %d quarantined, %d held out)"
         % (len(recs),
            sum(1 for r in recs if r["dir"] == OSM_CACHE.name),
-           sum(1 for r in recs if r["dir"] != OSM_CACHE.name)))
+           sum(1 for r in recs if r["dir"] in (QUAR.name, QUAR2.name)),
+           sum(1 for r in recs if r["dir"] == HOLD.name)))
     log("")
 
     by = {}
@@ -491,7 +497,6 @@ def phase_b(recs: list, log, dry_run: bool = False,
     return results
 
 
-HOLD = OSM_CACHE / "verify_holdout"
 HOLD_MANIFEST = OUT / "overpass_holdout_manifest.json"
 
 
