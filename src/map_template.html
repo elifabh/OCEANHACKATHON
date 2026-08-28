@@ -20,6 +20,11 @@
     --hairline:     #e1e0d9;
     --bed-stroke:   #7c2d12;   /* amber family — the 1.75 ha bed          */
     --bed-fill:     #f59e0b;
+    --nutrient:     #7a5c1e;   /* ochre — nutrient frame, its own colour  */
+    --transfer:     #5a4a6b;   /* aubergine — the France transfer test    */
+    --restore:      #1d6fa5;   /* blue — restoration candidates           */
+    --exposure-lo:  #f2e6c9;   /* exposure ramp, deliberately unlike the  */
+    --exposure-hi:  #8c3a2b;   /* teal/amber/violet already in use        */
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -67,9 +72,40 @@
     background: var(--paper);
   }
   .frame.coastal { border-left-color: var(--coastal); }
+  .frame.nutrient { border-left-color: var(--nutrient); }
   .frame h3 { font-size: 13px; font-weight: 650; margin-bottom: 8px; }
   .frame.fisheries h3 { color: var(--accent); }
   .frame.coastal h3 { color: var(--coastal); }
+  .frame.nutrient h3 { color: var(--nutrient); }
+  .frame .band { font-weight: 650; font-size: 15px; }
+
+  /* transfer test — a DIFFERENT SITE. Set apart so its euro can never be
+     misread as an Irish one: own colour, own border style, own site name
+     repeated in the heading and in the fine print. */
+  .transfer {
+    border: 2px solid var(--transfer); border-radius: 6px;
+    padding: 12px 14px; margin-top: 20px; background: #f8f6fa;
+  }
+  .transfer h3 { font-size: 13px; font-weight: 650; color: var(--transfer); }
+  .transfer .where {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--transfer); margin-bottom: 6px; font-weight: 650;
+  }
+  .transfer .row .amount { color: var(--transfer); }
+  .transfer table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .transfer th, .transfer td {
+    font-size: 11px; text-align: right; padding: 3px 4px;
+    border-bottom: 1px solid #e6e0ec;
+  }
+  .transfer th:first-child, .transfer td:first-child { text-align: left; }
+  .transfer th { color: var(--ink-3); font-weight: 600; }
+
+  /* exposure legend */
+  .ramp { display: flex; height: 10px; border-radius: 2px; overflow: hidden;
+          margin: 6px 0 3px; }
+  .ramp span { flex: 1; }
+  .ramp-labels { display: flex; justify-content: space-between;
+                 font-size: 10px; color: var(--ink-3); }
   .row { display: flex; justify-content: space-between; gap: 10px; margin: 7px 0; }
   .row .what { font-size: 13px; }
   .row .amount { font-weight: 650; font-size: 13.5px; white-space: nowrap; }
@@ -215,6 +251,42 @@
           (CC&nbsp;BY&nbsp;4.0), reprojected from Irish Grid. Click a waterbody for its
           cycle-by-cycle status.</p>
       </div>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-restore">
+          <span class="name"><span class="swatch" style="background:rgba(29,111,165,.35);border:1.5px dashed #1d6fa5"></span>
+            Restoration candidates</span></label>
+        <p class="caption"><b data-rest-label></b>.
+          <span data-rest-n></span> cells (<span data-rest-ha></span>&nbsp;ha) here:
+          surveyed, another community recorded, yet the model says the conditions
+          suit <i>L.&nbsp;hyperborea</i>. <b>Read the false-positive rate first:</b>
+          <span data-rest-fpr></span> of the <span data-rest-fprn></span> surveyed
+          non-Laminaria cells score above threshold anyway, against a
+          <span data-rest-crit></span> acceptance criterion the model
+          <b>fails</b> — so roughly two in three of these are expected to be
+          model error. A further <span data-rest-r2></span> cells
+          (<span data-rest-r2ha></span>&nbsp;ha) are <i>survey</i> candidates in
+          unmapped areas elsewhere in Ireland, off this map: nobody has looked
+          there, and "we do not know" is not "it is not there". No euro is
+          attached to any of it.</p>
+      </div>
+      <div class="layer">
+        <label><input type="checkbox" id="ly-exposure">
+          <span class="name"><span class="swatch" style="background:linear-gradient(90deg,#f2e6c9,#8c3a2b);border-radius:50%"></span>
+            Coastal exposure index</span></label>
+        <p class="caption"><b data-exp-label></b>.
+          <span data-exp-n></span> shore points, InVEST's Coastal Vulnerability
+          method implemented directly (the package licenses cleanly, Apache-2.0,
+          but will not install: its <code>gdal==3.10.*</code> pin has no wheel
+          for this Python). Geometric mean of
+          <span data-exp-vars></span> ranked variables. Kelp within 2&nbsp;km
+          lowers a point's rank from 5.00 to 4.05 on InVEST's own habitat table,
+          which moves the index by a median of
+          <span data-exp-red></span> at the <span data-exp-hab></span> points
+          that have it. Ordinal only — compare points with each other, never
+          across runs.</p>
+        <div class="ramp"><span style="background:#f2e6c9"></span><span style="background:#e2c08d"></span><span style="background:#d19a6a"></span><span style="background:#b26a48"></span><span style="background:#8c3a2b"></span></div>
+        <div class="ramp-labels"><span>least exposed</span><span>most exposed</span></div>
+      </div>
       <div class="layer disabled">
         <label><input type="checkbox" disabled>
           <span class="name">Coastal flood extents (OPW)</span></label>
@@ -262,6 +334,44 @@
           euro figure.</p>
       </div>
 
+      <div class="frame nutrient">
+        <h3>Nutrient removal — nitrogen</h3>
+        <div class="row"><span class="what">Nitrogen assimilated by this bed</span>
+          <span class="amount" data-nutr-mass></span></div>
+        <p class="fineprint">Eger et&nbsp;al. 2023 (<i>Nat Commun</i> 14:1894) publish
+          <b>124&nbsp;g&nbsp;N/m²/yr</b> for <i>Laminaria</i>/<i>Saccharina</i> —
+          a genus-specific MASS, from net primary production × literature tissue
+          composition. Applied to the locked <span data-nutr-ha></span>&nbsp;ha bed.</p>
+        <div class="row"><span class="what">Value, as a band</span>
+          <span class="amount band" data-nutr-band></span></div>
+        <p class="fineprint"><b>NOT a benefit transfer.</b> Eger et&nbsp;al. publish no
+          genus-specific nitrogen-only euro, which is why this row was omitted before.
+          This is <b>our own transparent replacement-cost synthesis</b>: their mass ×
+          an external European nitrogen price, each half checkable on its own.
+          Floor <b>€1.5/kg&nbsp;N</b> — SHARON/ANAMMOX side-stream treatment, the
+          cheapest place in the system to strip nitrogen (US&nbsp;EPA 832-F-07-017 p.5,
+          citing STOWA 2006). Ceiling <b>€5–20/kg&nbsp;N</b> — societal damage from
+          N-runoff (European Nitrogen Assessment ch.22, Brink &amp; van Grinsven,
+          CUP 2011, p.513). The two ends answer different questions and are 3–13×
+          apart, so the band <i>is</i> the result; a mean of it would be a
+          fabrication. Neither price is inflation-indexed.</p>
+        <p class="fineprint"><b>The weakness, stated first:</b> replacement cost needs
+          the man-made alternative to be a least-cost substitute (Shabman &amp; Batie
+          condition&nbsp;2). A treatment plant removes nitrogen permanently as N₂ gas;
+          kelp assimilates it into tissue that is largely <b>exported</b> as detritus
+          and substantially remineralised. The services are not equivalent, so this is
+          an upper bound on an upper bound. Demonstrated demand (condition&nbsp;3) is
+          not claimed. Overestimation warning: Barbier 2016.</p>
+        <p class="fineprint">Cross-check: Eger et&nbsp;al.'s own global nitrogen figure
+          pairs $73,831/ha/yr with 620&nbsp;kg&nbsp;N/ha/yr — an implicit
+          <b>$<span data-nutr-implied></span>/kg&nbsp;N</b>, about
+          <span data-nutr-x1></span>× the engineering floor and
+          <span data-nutr-x2></span>× the societal ceiling. Transferring their dollar
+          figure would import a price no European source supports.</p>
+        <p class="fineprint">Never summed with the frames above: different methods,
+          different questions, uncorrected overlap.</p>
+      </div>
+
       <div class="scenario">
         <h3>If the bed declines
           <span class="disclaimer">a tool, not a prediction</span></h3>
@@ -286,6 +396,69 @@
           <summary>Four limitations that travel with this statement</summary>
           <ul id="decline-limits"></ul>
         </details>
+      </div>
+
+      <div class="transfer">
+        <p class="where">Transfer test — a different site, in France</p>
+        <h3>Le Conquet &amp; the Molène archipelago, Iroise Sea, Brittany</h3>
+        <p class="fineprint">The engine has to transfer to other Atlantic locations,
+          so it was run end to end somewhere else. <b>Every figure in this box is
+          French and none of it is an Irish euro.</b> The coastal-protection chain
+          stopped at all 53 Irish sites for one physical reason: the only published
+          <i>L.&nbsp;hyperborea</i> attenuation coefficients (Dubi &amp; Tørum 1996)
+          were measured at 4–10&nbsp;m, and the Irish beds sit at 0.8&nbsp;m or
+          12–17&nbsp;m. This bed's core sits inside that band.</p>
+        <div class="row"><span class="what">Coefficients inside their tested range</span>
+          <span class="amount" data-fr-domain></span></div>
+        <p class="fineprint">First time anywhere in this project. The Sherkin control
+          re-derived 7.9%/15.2% before any French data was touched; the site's own
+          wave bearing (<span data-fr-wave></span>° , CMEMS IBI 2015–2024) was
+          measured, never carried from Ireland, and agrees with an independent
+          NWSHELF model to <span data-fr-cross></span>°.</p>
+        <div class="row"><span class="what">Wave energy reduction</span>
+          <span class="amount" data-fr-e></span></div>
+        <p class="fineprint">Published bin coefficients; the fitted curve this project
+          normally uses gives <span data-fr-efit></span>. Mork (1996)'s published
+          envelope is 70–85% — this lands <b data-fr-mork></b>.
+          <b>But read the conservative end too:</b> over the
+          <span data-fr-unsat-share></span> of cells where the exponential has
+          <i>not</i> been run out to saturation, energy reduction is
+          <b data-fr-eunsat></b>. The gap between the two is the extrapolation,
+          not the kelp.</p>
+        <div class="row"><span class="what">Avoided damage (primary method)</span>
+          <span class="amount">not computable</span></div>
+        <p class="fineprint">The same verdict as in Ireland, and for a reason that has
+          nothing to do with depth: no published method's inputs are produced by this
+          pipeline. All three need a hazard value <i>at the receptor</i>, with and
+          without the habitat; this pipeline produces a wave-height reduction
+          <i>offshore</i>. <b>The depth constraint was the first blocker in Ireland,
+          not the only one.</b></p>
+        <div class="row"><span class="what">Replacement cost, annualised</span>
+          <span class="amount" data-fr-annual></span></div>
+        <p class="fineprint"><b>Illustrative upper bound</b> (Barbier 2016), central
+          rate, over a measured <span data-fr-front></span>&nbsp;m frontage — the
+          shoreline that has both valid-band kelp on the wave path and a built
+          receptor below 5&nbsp;m behind it. Shabman &amp; Batie condition&nbsp;3
+          (demonstrated demand) is <b>met here</b>, where it fails at Sherkin:
+          <span data-fr-low5></span> receptors sit below 5&nbsp;m within 200&nbsp;m of
+          the IGN land–sea limit. Conditions 1 and 2 are still only partly met.
+          The unit rate is <b>Irish</b> (OPW, €5,621/m) applied on a French coast — a
+          cross-country transfer, flagged not hidden, and the Iroise is a harder
+          coast than the Wexford site it came from. Scaling by the energy reduction is
+          our simplification, not a published method. This is one-off <b>capital</b>
+          annualised at 4% over 50 years; never read beside the annual Irish rows as
+          if comparable.</p>
+        <table>
+          <thead><tr><th>Rate band</th><th>Full structure</th><th>Pro-rata</th><th>Annualised</th></tr></thead>
+          <tbody id="fr-rows"></tbody>
+        </table>
+        <p class="fineprint">Habitat layer: EMODnet Seabed Habitats macroalgae EOV
+          2025, CC&nbsp;BY&nbsp;4.0, <i>L.&nbsp;hyperborea</i> polygons only.
+          The Ifremer/Sextant Molène dataset is <b>CC&nbsp;BY-NC-ND</b> and is not
+          used. Depth: EMODnet Bathymetry (~100&nbsp;m), <i>not</i> the 1&nbsp;m
+          Litto3D the site deserves — Litto3D is openly licensed but reachable only
+          through a login portal. Receptors and ground level: IGN BD&nbsp;TOPO and
+          RGE&nbsp;ALTI, Licence Ouverte 2.0.</p>
       </div>
     </section>
 
@@ -347,6 +520,66 @@ document.querySelector("[data-replacement-range]").textContent =
 document.querySelector("[data-att-h]").textContent = L_.wave_height_attenuation_pct + "%";
 document.querySelector("[data-att-e]").textContent = L_.wave_energy_reduction_pct + "%";
 document.querySelector("[data-biodiv]").textContent = L_.biodiversity;
+/* ---------- restoration layer caption ---------- */
+const R_ = D.restoration;
+document.querySelector("[data-rest-label]").textContent = R_.label;
+document.querySelector("[data-rest-n]").textContent = R_.r1_cells;
+document.querySelector("[data-rest-ha]").textContent = R_.r1_ha.toFixed(1);
+document.querySelector("[data-rest-fpr]").textContent = R_.fpr_pct + "%";
+document.querySelector("[data-rest-fprn]").textContent = R_.fpr_n;
+document.querySelector("[data-rest-crit]").textContent = R_.fpr_criterion_pct + "%";
+document.querySelector("[data-rest-r2]").textContent = R_.r2_cells.toLocaleString("en-IE");
+document.querySelector("[data-rest-r2ha]").textContent = R_.r2_ha.toFixed(0);
+
+/* ---------- exposure layer caption ---------- */
+const X_ = D.exposure;
+document.querySelector("[data-exp-label]").textContent = X_.label;
+document.querySelector("[data-exp-n]").textContent = X_.n_points;
+document.querySelector("[data-exp-vars]").textContent = X_.variables_used.length;
+document.querySelector("[data-exp-red]").textContent = X_.habitat_median_reduction.toFixed(3);
+document.querySelector("[data-exp-hab]").textContent = X_.habitat_points;
+
+/* ---------- nutrient frame ---------- */
+const N_ = D.nutrient;
+document.querySelector("[data-nutr-mass]").textContent =
+  Math.round(N_.n_kg_total_yr).toLocaleString("en-IE") + " kg N/yr";
+document.querySelector("[data-nutr-ha]").textContent = L_.bed_ha;
+document.querySelector("[data-nutr-band]").textContent =
+  eur(N_.band.engineering_floor) + " – " + eur(N_.band.societal_high) + "/yr";
+document.querySelector("[data-nutr-implied]").textContent = N_.eger_implied_usd_per_kg;
+document.querySelector("[data-nutr-x1]").textContent = Math.round(N_.eger_vs_floor_x);
+document.querySelector("[data-nutr-x2]").textContent = Math.round(N_.eger_vs_ceiling_x);
+
+/* ---------- transfer test (France) ---------- */
+const F_ = D.france;
+const pct = x => (x * 100).toFixed(1) + "%";
+document.querySelector("[data-fr-domain]").textContent =
+  F_.cells_inside_domain.toLocaleString("en-IE") + " of " +
+  F_.cells_in_band.toLocaleString("en-IE");
+document.querySelector("[data-fr-wave]").textContent = F_.wave_from_deg;
+document.querySelector("[data-fr-cross]").textContent =
+  (F_.wave_crosscheck && F_.wave_crosscheck.delta_deg != null)
+    ? F_.wave_crosscheck.delta_deg : "—";
+document.querySelector("[data-fr-e]").textContent = pct(F_.E_bins);
+document.querySelector("[data-fr-efit]").textContent = pct(F_.E_fit);
+document.querySelector("[data-fr-mork]").textContent =
+  F_.mork.inside ? "inside it" : "outside it";
+document.querySelector("[data-fr-unsat-share]").textContent =
+  Math.round(F_.unsaturated.share_of_cells * 100) + "%";
+document.querySelector("[data-fr-eunsat]").textContent =
+  pct(F_.unsaturated.published_bins.E_reduction);
+document.querySelector("[data-fr-annual]").textContent =
+  eur(F_.rc_central.annualised_eur_per_yr) + "/yr";
+document.querySelector("[data-fr-front]").textContent =
+  Math.round(F_.frontage_priced_m).toLocaleString("en-IE");
+document.querySelector("[data-fr-low5]").textContent = F_.receptors.below_5m;
+document.getElementById("fr-rows").innerHTML = F_.rc_rows
+  .filter(r => r.coefficient_spelling === "published_bins")
+  .map(r => "<tr><td>" + r.rate_band + "</td><td>" +
+       eur(r.full_structure_eur) + "</td><td>" +
+       eur(r.pro_rata_eur) + "</td><td>" +
+       eur(r.annualised_eur_per_yr) + "/yr</td></tr>").join("");
+
 document.querySelector("[data-decline]").textContent = L_.decline_sentence;
 document.getElementById("decline-limits").innerHTML =
   L_.decline_limitations.map(t => "<li>" + t + "</li>").join("");
@@ -382,6 +615,8 @@ map.createPane("suitPane").style.zIndex = 430;
 map.createPane("interPane").style.zIndex = 440;
 map.createPane("bedPane").style.zIndex = 450;
 map.createPane("sitePane").style.zIndex = 470;
+map.createPane("restorePane").style.zIndex = 435;
+map.createPane("exposurePane").style.zIndex = 480;
 
 /* suitability: sequential single-hue ramp, light = low (recedes), dark = high */
 const RAMP = ["#96d5cf", "#6bc0b8", "#43a49c", "#23837c", "#0e615b"];
@@ -464,6 +699,55 @@ const siteLayer = L.layerGroup(D.biodiversity.sites.map(s =>
       "<div class='popup-note'>OBIS/Seasearch records; site position is the " +
       "survey coordinate.</div>")));
 
+/* restoration candidates (class R1 only — R2 is off this map) */
+const restoreLayer = L.geoJSON(D.restoration.r1, {
+  pane: "restorePane",
+  style: { color: "#1d6fa5", weight: 1.5, dashArray: "4 3",
+           fillColor: "#1d6fa5", fillOpacity: 0.35 },
+  onEachFeature: (f, ly) => ly.bindPopup(
+    "<h4>Restoration candidate</h4>" +
+    "Rank " + f.properties.rank_in_class + " of " + D.restoration.r1_cells +
+    " here · modelled suitability " + f.properties.suitability +
+    "<div class='popup-note'>" + D.restoration.label + ". Surveyed, another " +
+    "community recorded, yet the model says the conditions suit " +
+    "<i>L. hyperborea</i>. The model fails its own external false-positive " +
+    "criterion on exactly these cells (" + D.restoration.fpr_pct + "% against " +
+    "a " + D.restoration.fpr_criterion_pct + "% limit), so roughly two in " +
+    "three are expected to be model error. Rank is ordinal. No euro is " +
+    "attached.</div>"),
+});
+
+/* qualitative coastal exposure index */
+const EXP_RAMP = ["#f2e6c9", "#e2c08d", "#d19a6a", "#b26a48", "#8c3a2b"];
+const exposureLayer = L.geoJSON(D.exposure.points, {
+  pane: "exposurePane",
+  pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+    pane: "exposurePane", radius: 5,
+    color: "#fcfcfb", weight: 1.2,
+    fillColor: EXP_RAMP[Math.max(0, Math.min(4,
+      Math.round(f.properties.exposure_quintile) - 1))],
+    fillOpacity: 0.95 }),
+  onEachFeature: (f, ly) => {
+    const p = f.properties;
+    ly.bindPopup(
+      "<h4>Coastal exposure — shore point</h4>" +
+      "Exposure index <b>" + p.EI + "</b> (quintile " + p.exposure_quintile +
+      " of 5)" +
+      "<table>" +
+      "<tr><td>with habitat</td><td>" + p.EI + "</td></tr>" +
+      "<tr><td>with no habitat anywhere</td><td>" + p.EI_no_habitat + "</td></tr>" +
+      "<tr><td>habitat lowers it by</td><td>" + p.EI_habitat_reduction + "</td></tr>" +
+      "</table>" +
+      "<div class='popup-note'>" + D.exposure.label + ". Geometric mean of " +
+      D.exposure.variables_used.length + " ranked variables (" +
+      D.exposure.variables_used.join(", ") + "); " +
+      D.exposure.variables_omitted.join(" and ") + " omitted. " +
+      "The index is ORDINAL: it says this point is more or less exposed than " +
+      "another point on this map, and nothing else. It is not a hazard, not " +
+      "a probability, and it is not convertible to a euro.</div>");
+  },
+});
+
 /* toggles */
 function wire(id, layer, on) {
   const cb = document.getElementById(id);
@@ -477,6 +761,8 @@ wire("ly-inter", interLayer, true);
 wire("ly-bed", bedLayer, true);
 wire("ly-epa", epaLayer, false);
 wire("ly-sites", siteLayer, false);
+wire("ly-restore", restoreLayer, false);
+wire("ly-exposure", exposureLayer, false);
 
 /* legend */
 const legend = L.control({ position: "bottomright" });

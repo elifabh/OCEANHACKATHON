@@ -328,6 +328,225 @@ def build_biodiversity() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Layer 6 - RESTORATION PRIORITY (2026-08-28). Built by
+# src/restoration_priority.py. Only class R1 is rendered here: R2 lies in the
+# national gap AOIs, hundreds of kilometres off this map, and drawing nothing
+# for it is more honest than drawing it somewhere it is not.
+#
+# The layer's external false-positive rate travels with it. A restoration
+# layer whose FPR is not on its face is a recommendation pretending to be a
+# map, so the build REFUSES if that number stops being a failure.
+# ---------------------------------------------------------------------------
+def build_restoration() -> dict:
+    d = ROOT / "outputs" / "restoration"
+    gj_path = d / "restoration_candidates.geojson"
+    sm_path = d / "restoration_summary.json"
+    if not gj_path.exists() or not sm_path.exists():
+        fail(f"{gj_path.name} / {sm_path.name} missing - run "
+             f"src/restoration_priority.py (no placeholder data)")
+    summary = json.loads(sm_path.read_text(encoding="utf-8"))
+    g = gpd.read_file(gj_path)
+
+    bbox = shapely_box(*AOIS[PRIMARY_AOI])
+    r1 = g[(g.restoration_class == "R1") & g.geometry.intersects(bbox)].copy()
+    area_ha = float(r1.to_crs(CRS_ITM).area.sum()) / 10_000.0
+    expect = len(r1) * (GRID_M * GRID_M) / 1e4
+    if abs(area_ha - expect) > 0.01:
+        fail(f"restoration R1 area {area_ha:.3f} ha != {expect:.3f} ha "
+             f"expected from {len(r1)} cells of {GRID_M:.0f} m")
+
+    fpr = summary["external_false_positive_rate"]
+    if fpr["passes"]:
+        fail("the model's external FPR now PASSES its acceptance criterion; "
+             "the restoration caption says it fails. Re-read the model report "
+             "before shipping either.")
+    if not summary["euro"].startswith("NONE"):
+        fail("restoration layer has acquired a euro value; it must not have one")
+
+    print(f"  restoration: R1 {len(r1)} cells = {area_ha:.2f} ha on this map; "
+          f"R2 {summary['classes']['R2']['cells']} cells off-map; "
+          f"external FPR {fpr['value']:.1%} (criterion "
+          f"{fpr['threshold_max']:.0%}, FAILED)")
+    return {
+        "r1": gdf_to_geojson(r1[["restoration_class", "rank_in_class",
+                                 "suitability", "geometry"]]),
+        "r1_cells": int(len(r1)),
+        "r1_ha": round(area_ha, 2),
+        "r2_cells": int(summary["classes"]["R2"]["cells"]),
+        "r2_ha": summary["classes"]["R2"]["ha"],
+        "label": summary["layer_label"],
+        "fpr_pct": round(fpr["value"] * 100, 1),
+        "fpr_criterion_pct": round(fpr["threshold_max"] * 100, 0),
+        "fpr_n": fpr["n"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Layer 7 - QUALITATIVE COASTAL EXPOSURE INDEX (2026-08-28). Built by
+# src/coastal_exposure_index.py: InVEST's documented method, implemented
+# directly. ORDINAL. It is rendered on the map and kept away from every euro
+# frame, and the build refuses if it has acquired a monetary interpretation.
+# ---------------------------------------------------------------------------
+def build_exposure() -> dict:
+    d = ROOT / "outputs" / "exposure_index"
+    gj_path = d / f"exposure_index_{PRIMARY_AOI}.geojson"
+    sm_path = d / f"exposure_index_{PRIMARY_AOI}_summary.json"
+    if not gj_path.exists() or not sm_path.exists():
+        fail("exposure index missing - run src/coastal_exposure_index.py")
+    s = json.loads(sm_path.read_text(encoding="utf-8"))
+    if s.get("monetary") is not False or not s["euro"].startswith("NONE"):
+        fail("exposure index has acquired a monetary interpretation")
+    g = gpd.read_file(gj_path)
+    keep = ["EI", "EI_no_habitat", "EI_habitat_reduction",
+            "exposure_quintile", "kelp_within_2km", "geometry"]
+    g = g[[c for c in keep if c in g.columns]].copy()
+    for c in ("EI", "EI_no_habitat", "EI_habitat_reduction"):
+        if c in g.columns:
+            g[c] = g[c].round(3)
+    print(f"  exposure index: {len(g)} shore points, EI "
+          f"{s['EI']['min']}-{s['EI']['max']}, "
+          f"{len(s['variables_used'])} variables, habitat lowers EI by "
+          f"median {s['habitat']['median_EI_reduction']}")
+    return {
+        "points": gdf_to_geojson(g, ndigits=5),
+        "label": s["layer_label"],
+        "n_points": int(len(g)),
+        "ei_min": s["EI"]["min"], "ei_median": s["EI"]["median"],
+        "ei_max": s["EI"]["max"],
+        "variables_used": s["variables_used"],
+        "variables_omitted": list(s["variables_omitted"]),
+        "habitat_median_reduction": s["habitat"]["median_EI_reduction"],
+        "habitat_points": s["habitat"]["points_with_kelp"],
+        "invest_ran": s["invest"]["ran_invest_itself"],
+        "invest_licence": s["invest"]["licence"],
+        "invest_install": s["invest"]["install"],
+        "wind_note": s["wind"], "wave_note": s["wave"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# FRAME 4 - NUTRIENT REMOVAL (2026-08-28). Built by src/nutrient_removal.py,
+# which verifies its own inputs against their primary sources and returns a
+# BAND. The band is RE-DERIVED here from the mass and the prices rather than
+# read as a headline: a headline nobody recomputes is a headline nobody is
+# checking.
+# ---------------------------------------------------------------------------
+def build_nutrient() -> dict:
+    p = ROOT / "outputs" / "valuation" / "nutrient_removal.json"
+    if not p.exists():
+        fail("nutrient_removal.json missing - run src/nutrient_removal.py")
+    d = json.loads(p.read_text(encoding="utf-8"))
+    if not d["verification"]["all_passed"]:
+        fail("nutrient_removal.py's own verification did not pass")
+    row = d["row"]
+    if abs(row["bed_ha"] - LOCKED["bed_ha"]) > 1e-9:
+        fail(f"nutrient row uses {row['bed_ha']} ha, locked bed is "
+             f"{LOCKED['bed_ha']} ha")
+    for k, price in row["price_eur_per_kg"].items():
+        want = round(row["n_kg_total_yr"] * price)
+        if abs(row["band_eur_per_yr"][k] - want) > 1:
+            fail(f"nutrient band {k}: stored {row['band_eur_per_yr'][k]} != "
+                 f"recomputed {want}")
+    if row["demand_condition_met"]:
+        fail("nutrient row asserts demonstrated demand; it must not")
+    if "NOT a benefit transfer" not in row["label"]:
+        fail("nutrient row has lost its 'NOT a benefit transfer' label")
+    print(f"  nutrient: {row['n_kg_total_yr']:,.0f} kg N/yr over "
+          f"{row['bed_ha']} ha -> EUR "
+          f"{row['band_eur_per_yr']['engineering_floor']:,}-"
+          f"{row['band_eur_per_yr']['societal_high']:,}/yr (band re-derived)")
+    return {
+        "n_kg_per_ha_yr": row["n_kg_per_ha_yr"],
+        "n_kg_total_yr": row["n_kg_total_yr"],
+        "band": row["band_eur_per_yr"],
+        "prices": row["price_eur_per_kg"],
+        "label": row["label"],
+        "caveats": list(row["caveats"]),
+        "eger_implied_usd_per_kg": d["eger_implicit_price"]["implied_usd_per_kg_n"],
+        "eger_vs_floor_x": d["eger_implicit_price"]["vs_engineering_floor_x"],
+        "eger_vs_ceiling_x": d["eger_implicit_price"]["vs_societal_high_x"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# TRANSFER TEST - the Iroise Sea run (2026-08-28). NOT a layer on the Irish
+# map and NOT an Irish euro. It is the evidence that the engine transfers,
+# which is the challenge's own requirement, and it is presented in its own
+# section with its own site name attached to every figure.
+# ---------------------------------------------------------------------------
+def build_france() -> dict:
+    cp = ROOT / "outputs" / "france" / "france_chain.json"
+    vp = ROOT / "outputs" / "france" / "france_valuation.json"
+    if not cp.exists() or not vp.exists():
+        fail("France chain/valuation JSON missing - run src/france_chain.py "
+             "then src/france_valuation.py")
+    c = json.loads(cp.read_text(encoding="utf-8"))
+    v = json.loads(vp.read_text(encoding="utf-8"))
+
+    if not c["sherkin_control"]["reproduces_locked_figures"]:
+        fail("the France run's Sherkin control did not reproduce 7.9/15.2")
+    dom = c["coefficient_domain"]
+    if not dom["all_inside"]:
+        fail("France run used a coefficient outside 4-10 m")
+    if v["avoided_damage"]["euro"] is not None:
+        fail("France avoided-damage row has acquired a euro; the "
+             "damage-function check says no published method fits")
+
+    rc = v.get("replacement_cost", {})
+    central = [r for r in rc.get("rows", [])
+               if r["rate_band"] == "central"
+               and r["coefficient_spelling"] == "published_bins"]
+    if not central:
+        fail("no central replacement-cost row in the France valuation")
+    central = central[0]
+    if "ILLUSTRATIVE UPPER BOUND" not in central["label"]:
+        fail("France replacement-cost row is not labelled an illustrative "
+             "upper bound")
+
+    unsat = c.get("attenuation_unsaturated_only")
+    if not unsat:
+        fail("France run has no unsaturated-subset figure; the headline "
+             "attenuation must not travel without its conservative end")
+    print(f"  France: {dom['n_inside_4_10m']:,}/{dom['n_cells']:,} cells in "
+          f"4-10 m; E {c['attenuation']['published_bins']['E_reduction']:.1%} "
+          f"(unsaturated subset "
+          f"{unsat['published_bins']['E_reduction']:.1%}); "
+          f"frontage {rc['frontage_m_priced']:,.0f} m; "
+          f"annualised EUR {central['annualised_eur_per_yr']:,}/yr")
+    return {
+        "site": c["site"]["name"],
+        "town": c["site"]["receptor_town"],
+        "lon": c["site"]["receptor_lon"], "lat": c["site"]["receptor_lat"],
+        "habitat_ha": c["habitat"]["ha_at_threshold"],
+        "inband_ha": c["depth_gate"]["LAT"]["ha"],
+        "cells_in_band": dom["n_cells"],
+        "cells_inside_domain": dom["n_inside_4_10m"],
+        "wave_from_deg": c["wave"]["from_deg"],
+        "wave_crosscheck": c.get("wave_crosscheck", {}),
+        "H_bins": c["attenuation"]["published_bins"]["H_reduction"],
+        "E_bins": c["attenuation"]["published_bins"]["E_reduction"],
+        "H_fit": c["attenuation"]["fitted_curve"]["H_reduction"],
+        "E_fit": c["attenuation"]["fitted_curve"]["E_reduction"],
+        "unsaturated": unsat,
+        "mork": c["mork_crosscheck"],
+        "saturation": c["saturation"],
+        "receptors": c["receptors"],
+        "defence_class": c.get("defence_class_check", {}),
+        "frontage_priced_m": rc.get("frontage_m_priced"),
+        "frontage_context_m": rc.get("frontage_m_habitat_only_context"),
+        "c3_met": v["shabman_batie"]["met"],
+        "avoided_damage_verdict": v["avoided_damage"]["verdict"],
+        "rc_central": central,
+        "rc_rows": rc.get("rows", []),
+        "cross_country": rc.get("cross_country_warning"),
+        "settled": v["what_this_settled"],
+        "licence_note": "Kelp layer: EMODnet Seabed Habitats macroalgae EOV "
+                        "2025, CC BY 4.0. The Ifremer/Sextant Molene dataset "
+                        "the brief named is CC BY-NC-ND and is NOT used.",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Assemble, inject, self-check, write.
 # ---------------------------------------------------------------------------
 def main() -> None:
@@ -342,6 +561,10 @@ def main() -> None:
         "epa": build_epa(),
         "biodiversity": build_biodiversity(),
         "intertidal": build_intertidal(),
+        "restoration": build_restoration(),
+        "exposure": build_exposure(),
+        "nutrient": build_nutrient(),
+        "france": build_france(),
         "opw_note": (
             "OPW national coastal flood extents: licence CC BY-NC-ND 4.0, "
             "clearance pending — layer withheld."
@@ -362,9 +585,35 @@ def main() -> None:
             fail(f"forbidden figure {forbidden!r} found in output HTML")
     for required in ("14 of 17", "a tool, not a prediction",
                      "counterfactual illustration", "species-agnostic",
-                     "unvalidated"):
+                     "unvalidated",
+                     # added 2026-08-28 with the four new deliverables. Each
+                     # phrase is the one thing that stops its own layer or row
+                     # from being read as something stronger than it is.
+                     "not a management recommendation",
+                     "qualitative relative exposure index",
+                     "not a monetary value",
+                     "NOT a benefit transfer",
+                     # Case matters: the ALL-CAPS form travels inside the
+                     # embedded JSON whether or not the panel renders it, so
+                     # a case-insensitive check would pass on data the reader
+                     # never sees. This is the visible label.
+                     "Illustrative upper bound"):
         if required not in html:
             fail(f"required phrase {required!r} missing from output HTML")
+
+    # A grand total across service types is the one thing the three-frame
+    # layout exists to prevent, and a fourth frame is a fourth chance to add
+    # one by accident. The check is on the artefact, not on intent.
+    for banned in ("Grand total", "GRAND TOTAL", "Total value",
+                   "grand total"):
+        if banned in html:
+            fail(f"{banned!r} appears in the output HTML; rows are never "
+                 f"summed across service types")
+
+    # The France euro must never be able to read as an Irish one.
+    if "France" not in html or "Le Conquet" not in html:
+        fail("the transfer-test section has lost its site name; a French "
+             "euro with no site name beside it is an Irish euro to a reader")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_file = OUT_DIR / "index.html"
