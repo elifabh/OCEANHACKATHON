@@ -134,6 +134,9 @@ their transitive dependencies.
 | Sentinel-2 L1C / L2A                                                      | ESA / Copernicus, via Copernicus Data Space and Google Earth Engine                | Free, full and open under the Copernicus data policy; attribution required | **PARTIAL** — the policy is unambiguous, the exact legal instrument has not been cited in our text   |
 | Irish National Tide Gauge Network (Union Hall, Castletownbere) via ERDDAP | Marine Institute                                                                   | CC BY 4.0                                                                  | **RECORDED, NOT RE-CHECKED** — taken from `common.ATTRIBUTION`; re-read from the ERDDAP dataset page |
 | Wave fetch, 200 m, log10 summed fetch, `log10_eu200m1a.tif`               | M.T. Burrows, figshare                                                             | CC BY 4.0                                                                  | **VERIFIED 2026-08-17** — figshare record 12029682 ("Wave fetch GIS layers for the UK and Ireland at 200m scale", DOI 10.6084/m9.figshare.12029682.v1, published 2020-03-25), licence field read via the figshare public API: `CC BY 4.0, https://creativecommons.org/licenses/by/4.0/`. Our local file is byte-identical to the published one (MD5 `a1f2914f6cefa326f9d571800dc650ec`, 10,853,683 bytes, matches). |
+| Copernicus WorldDEM-30 (GLO-30 DSM), open COG on AWS `copernicus-dem-30m` — receptor ELEVATION screening (`src/anaird_phaseb.py`) | DLR / Airbus Defence and Space, provided under COPERNICUS by the European Union and ESA | "Licence for Copernicus DEM instance COP-DEM-GLO-30-F Global 30m Full, Free & Open" | **VERIFIED 2026-08-28** — licence PDF read in full and saved at `data/reference/License-COPDEM-30.pdf`. Art.3 rights are worldwide and unlimited in time; Art.4 grants reproduction, distribution, communication to the public and adaptation; Art.5 free of charge. **No non-commercial clause and no no-derivatives clause**, so unlike the OPW row this one is not a publication blocker. Art.6 notices are mandatory — see §4. This RESOLVES open item 3 of the 2026-08-27 national screen note ("GLO-30 licence text still not read"). Note it is a Digital SURFACE Model: it includes buildings and vegetation, so a value over a footprint is biased UPWARD. |
+| CMEMS `IBI_MULTIYEAR_WAV_005_006` / `cmems_mod_ibi_wav_my_0.027deg_PT1H-i` — measured wave direction and `H_s` (`src/swell_direction.py`, Sherkin 2026-08-10 and An Aird 2026-08-28) | E.U. Copernicus Marine Service, Mercator Ocean International; model MFWAM-CY47R1, NOWSystems-Meteo-France | Copernicus Marine Service licence — worldwide, non-exclusive, royalty-free, perpetual; free of charge; derivative works and redistribution permitted | **VERIFIED 2026-08-28, AND A COMPLIANCE GAP CLOSED.** This dataset was listed in §3.2 "planned, not yet used / UNREAD" while it had in fact been in active use since 2026-08-10, when it settled the Sherkin swell axis that produced the locked 7.9 % / 15.2 %. The licence URL is carried in the NetCDF's own `licence` attribute. Attribution is mandatory — see §4. Requires a Copernicus Marine account (separate from the Copernicus Data Space account used for Sentinel-2). |
+| OPW National Coastal Flood Hazard Maps 2022, Current Scenario (`ncfhm_itm_ext_c_c_*`) — receptor exposure SCREENING, internal only | Office of Public Works | **CC BY-NC-ND 4.0 — non-commercial, no derivatives. UNRESOLVED** (data.gov.ie simultaneously tags it a High Value Dataset under EU Implementing Regulation 2023/138, which requires open terms; the two are in tension) | **IN USE INTERNALLY, PUBLICATION BLOCKED.** Used by `src/step3b2_flood_check.py` (Sherkin, 2026-08-10) and `src/anaird_phaseb.py` (An Aird, 2026-08-28) to COUNT buildings inside a mapped extent. A count is not a visual derivative; CLAUDE.md rule 9 blocks visual derivatives, and that block stands. Nothing derived from this layer appears in `outputs/map/`. `flood_data@opw.ie` has still not been written to. |
 | Google Earth Engine                                                       | Google                                                                             | Earth Engine Terms of Service                                              | **UNREAD**                                                                                           | community / non-commercial tier; terms not read |
 | EPA WFD coastal waterbodies + status cycles (`outputs/epa_cwb/*.geojson`, embedded in the step 6 map) | Environmental Protection Agency, Ireland | CC BY 4.0 | **VERIFIED 2026-08-17** — data.gov.ie dataset page states "published under the terms of the license Creative Commons Attribution 4.0 International (CC BY 4.0)". The gis.epa.ie GeoNetwork record timed out on the same day; re-confirm there when reachable. |
 | OpenStreetMap basemap tiles (runtime only, step 6 map)                    | OpenStreetMap contributors                                                         | ODbL 1.0 (data); tiles per OSMF tile-usage policy                          | **VERIFIED, decision recorded** — tiles are DISPLAY ONLY, fetched at runtime, never stored, and no OSM geometry or attribute enters our data or valuation database, so the ODbL share-alike obligation is not triggered. Attribution shown on the map itself. The map renders its own layers without tiles when offline. |
@@ -153,11 +156,11 @@ Listed so that nothing arrives in the prototype undeclared.
 
 | Dataset                                             | Publisher                   | Expected licence                                | Status                                                                                                                                                                               |
 | --------------------------------------------------- | --------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Copernicus Marine Service (SST, wave `H_s` / `T_p`) | Copernicus / Mercator Ocean | Copernicus Marine licence, attribution required | UNREAD — needed for bottom orbital velocity `u_b` in step 3                                                                                                                          |
+| Copernicus Marine Service (SST, wave `H_s` / `T_p`) | Copernicus / Mercator Ocean | Copernicus Marine licence, attribution required | **MOVED TO §3.1** (2026-08-28) — the wave product has been in active use since 2026-08-10; leaving it here was a real compliance gap. SST is still unused. |
 | EMODnet Bathymetry / Geology                        | EMODnet                     | CC BY                                           | UNREAD                                                                                                                                                                               |
 | OBIS                                                | OBIS / IOC-UNESCO           | varies by dataset                               | UNREAD — biodiversity score                                                                                                                                                          |
 | GBIF                                                | GBIF                        | varies by dataset; per-record citation required | UNREAD — biodiversity score                                                                                                                                                          |
-| OPW national flood maps                             | Office of Public Works      | UNREAD                                          | UNREAD — coastal assets at risk                                                                                                                                                      |
+| OPW national flood maps                             | Office of Public Works      | CC BY-NC-ND 4.0                                 | **MOVED TO §3.1** (2026-08-28) — in internal screening use since 2026-08-10. The licence is read; what is unresolved is its tension with the High Value Dataset regulation. |
 | GeoHive / Tailte Éireann                            | Tailte Éireann              | UNREAD                                          | UNREAD                                                                                                                                                                               |
 | OpenStreetMap                                       | OSM contributors            | ODbL 1.0                                        | **MOVED TO §3.1** (2026-08-17) — in use as runtime basemap tiles only; the deliberate decision required by this row is recorded there. |
 
@@ -198,6 +201,29 @@ publisher specifies it. The canonical copies live in `common.ATTRIBUTION`.
 > Licence (ODbL 1.0). Any published screen table derived from it is a
 > derivative database under ODbL.
 
+**Copernicus WorldDEM-30 (GLO-30)** — Article 6(b), for adapted or modified data, which is our case
+
+> produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus
+> Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European
+> Union and ESA; all rights reserved
+
+Where the data are distributed unmodified, Article 6(a) applies instead:
+
+> © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided
+> under COPERNICUS by the European Union and ESA; all rights reserved
+
+Article 6(c) also requires this sentence wherever the data reach the general
+public:
+
+> The organisations in charge of the Copernicus programme by law or by
+> delegation do not incur any liability for any use of the Copernicus
+> WorldDEM-30.
+
+**Copernicus Marine Service (wave reanalysis)**
+
+> Generated using E.U. Copernicus Marine Service Information;
+> IBI_MULTIYEAR_WAV_005_006, https://doi.org/10.48670/moi-00030
+
 **Marine Institute tide gauges**
 
 > Irish National Tide Gauge Network, Marine Institute, via ERDDAP. CC BY 4.0.
@@ -223,10 +249,23 @@ this section is open.
    4.0 is confirmed; the dataset's own metadata is not.
 3. **Google Earth Engine Terms of Service unread.** The community tier is
    non-commercial. If the prototype is ever framed as a product, this matters.
-4. **Copernicus Marine licence unread**, and it is on the step 3 critical path.
+4. ~~**Copernicus Marine licence unread**, and it is on the step 3 critical
+   path.~~ **RESOLVED 2026-08-28**: worldwide, non-exclusive, royalty-free,
+   perpetual, free of charge, derivatives and redistribution permitted;
+   attribution mandatory. See §3.1 and §4. It had been in use since
+   2026-08-10 while still listed as unused — that is the gap, and it is
+   recorded rather than quietly fixed.
 5. **ACOLITE licence not confirmed** from its own repository.
 6. **The Python package table has not been generated yet.** Until it is, this
    file does not satisfy the rules.
+7. **OPW National Coastal Flood Hazard Maps: CC BY-NC-ND 4.0, unresolved.**
+   In internal screening use (counts only, §3.1). No visual derivative may be
+   published. `flood_data@opw.ie` still unwritten — this is the oldest open
+   item in the project.
+8. ~~**Copernicus GLO-30 licence text unread**~~ **RESOLVED 2026-08-28** —
+   full, free and open; see §3.1. Not a blocker.
+9. **`google-crc32c 1.8.0` has no machine-readable licence.** Carried from
+   2026-08-27. Needs a human before submission.
 
 ---
 
