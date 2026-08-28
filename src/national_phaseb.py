@@ -480,10 +480,18 @@ def main() -> int:
             print(f"   !! model threshold on disk {thr} != {MODEL_THRESHOLD}")
             return 3
 
-    wave_e1 = REPO / "outputs" / "exposure_screen" / "site_wave_climate_e1.csv"
-    if wave_e1.exists():
-        wave = pd.concat([wave, pd.read_csv(wave_e1)], ignore_index=True)
+    # Wave climates are written one file per batch (the six flagged sites, the
+    # three E1 sites, and any site a later Part 1 run adds). Globbing rather
+    # than naming them means a new batch cannot be silently left out.
+    wdir = REPO / "outputs" / "exposure_screen"
+    extra = sorted(q for q in wdir.glob("site_wave_climate*.csv")
+                   if q.name != "site_wave_climate.csv")
+    if extra:
+        wave = pd.concat([wave] + [pd.read_csv(q) for q in extra],
+                         ignore_index=True)
         wave = wave.drop_duplicates(subset=["cluster"], keep="first")
+        print(f"  wave-climate files merged: "
+              f"{['site_wave_climate.csv'] + [q.name for q in extra]}")
 
     if args.clusters:
         want = [int(x) for x in args.clusters.split(",") if x.strip()]
@@ -597,6 +605,17 @@ def main() -> int:
             else:
                 print("     >>> in domain. The coefficient is being used inside "
                       "its near-linear range.")
+            if r.get("attenuation_on_wave_path"):
+                ap = r["attenuation_on_wave_path"]
+                print(f"     over ONLY the part of the bed on the wave path "
+                      f"({ap['n_cells']} cells, {ap['ha']:.2f} ha): "
+                      f"H {ap['H_reduction']*100:.1f} % / "
+                      f"E {ap['E_reduction']*100:.1f} %")
+            if s['ratio_max'] > SATURATION_STOP:
+                print(f"     note: the MEDIAN ratio is in domain but the "
+                      f"maximum is {s['ratio_max']:.2f} - some cells in "
+                      f"this bed are past the half-loss")
+                print("           width even though the median is not.")
             if not r.get("bed_on_wave_path"):
                 print("     >>> BUT NONE OF THIS BED IS ON THE WAVE PATH. "
                       "Every cell in the")
@@ -753,6 +772,13 @@ def main() -> int:
             "H_reduction": (r.get("attenuation") or {}).get("H_reduction"),
             "E_reduction": (r.get("attenuation") or {}).get("E_reduction"),
             "saturation_ratio_median": (r.get("saturation") or {}).get("ratio_median"),
+            "saturation_ratio_max": (r.get("saturation") or {}).get("ratio_max"),
+            "traversed_width_median_m": (r.get("saturation") or {}).get(
+                "traversed_width_median_m"),
+            "H_reduction_on_wave_path": (r.get("attenuation_on_wave_path")
+                                         or {}).get("H_reduction"),
+            "E_reduction_on_wave_path": (r.get("attenuation_on_wave_path")
+                                         or {}).get("E_reduction"),
             "out_of_domain": r.get("out_of_domain"),
             "bed_on_wave_path": r.get("bed_on_wave_path"),
             "exposed_receptors_tag_based": val.get("exposed_receptors_tag_based"),
@@ -766,7 +792,11 @@ def main() -> int:
             "status": r.get("status"),
         })
 
-    out_json = OUT / "national_phaseb_summary.json"
+    # A partial run (--clusters) must never overwrite the full deliverable:
+    # a table holding two of nine sites looks exactly like a table holding
+    # nine, and the results table downstream would silently lose rows.
+    suffix = "_subset" if args.clusters else ""
+    out_json = OUT / f"national_phaseb_summary{suffix}.json"
     out_json.write_text(json.dumps(
         {"run_utc": t0, "sherkin_guard": sh,
          "parameters": {"FETCH_EXCLUSION_MAX": FETCH_EXCLUSION_MAX,
@@ -776,7 +806,7 @@ def main() -> int:
                         "BEARING_PRIMARY": BEARING_PRIMARY},
          "sites": results}, indent=2, default=str), encoding="utf-8")
     tab = pd.DataFrame(rows)
-    tab.to_csv(OUT / "national_phaseb_table.csv", index=False)
+    tab.to_csv(OUT / f"national_phaseb_table{suffix}.csv", index=False)
 
     hr("SUMMARY")
     if not tab.empty:
@@ -788,7 +818,7 @@ def main() -> int:
                 "avoided_damage_eur"]
         print(tab[show].to_string(index=False))
     print(f"\nWrote {out_json}")
-    print(f"Wrote {OUT / 'national_phaseb_table.csv'}")
+    print(f"Wrote {OUT}/national_phaseb_table{suffix}.csv")
     return 0
 
 

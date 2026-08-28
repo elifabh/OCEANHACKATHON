@@ -94,12 +94,26 @@ STATUS_TEXT = {
 }
 
 
+def _i(v):
+    """int() that keeps a missing value missing instead of inventing a zero."""
+    return None if v is None or pd.isna(v) else int(v)
+
+
 def main() -> int:
     t0 = datetime.now(timezone.utc).isoformat(timespec="seconds")
     cand = pd.read_csv(CAND)
     expo = pd.read_csv(EXPO)
     pb = pd.read_csv(PHASEB) if PHASEB.exists() else pd.DataFrame()
-    ortho = pd.read_csv(ORTHO) if ORTHO.exists() else pd.DataFrame()
+    # Every orthophoto manifest, not just the first batch: a later Part 1 run
+    # can add flagged clusters whose chips land in their own directory.
+    mans = sorted((REPO / "outputs" / "exposure_screen").glob(
+        "ortho*/ortho_manifest*.csv"))
+    ortho = (pd.concat([pd.read_csv(m) for m in mans], ignore_index=True)
+             if mans else pd.DataFrame())
+    if mans:
+        print(f"  orthophoto manifests read: {[m.name for m in mans]} "
+              f"({len(ortho)} buildings, "
+              f"{int(ortho.verdict.notna().sum())} with a verdict)")
     drill = pd.read_csv(DRILL) if DRILL.exists() else pd.DataFrame()
 
     # ---- the row set ------------------------------------------------------
@@ -131,9 +145,14 @@ def main() -> int:
                 "occupied_tag": int(x.n_occupied_tag),
                 "lowest_occupied_m": float(x.elev_min_occupied_m),
                 "exposed_receptors_tag_based": int(x.exposed_receptors),
-                "in_opw_1000yr_internal_any": int(x.opw_internal_1000yr_inside),
-                "in_opw_1000yr_internal_occupied": int(
+                # OPW counts are NaN where the layer maps no extent within the
+                # search box. "No extent mapped" is not "no risk" and it is not
+                # zero either, so it stays None and prints as "-".
+                "in_opw_1000yr_internal_any": _i(x.opw_internal_1000yr_inside),
+                "in_opw_1000yr_internal_occupied": _i(
                     x.opw_internal_1000yr_inside_occupied),
+                "opw_extent_mapped": bool(pd.notna(
+                    x.opw_internal_1000yr_inside)),
             })
         else:
             row.update({"exposed_receptors_tag_based": None,
@@ -162,6 +181,10 @@ def main() -> int:
                 "H_reduction": b.get("H_reduction"),
                 "E_reduction": b.get("E_reduction"),
                 "saturation_ratio": b.get("saturation_ratio_median"),
+                "saturation_ratio_max": b.get("saturation_ratio_max"),
+                "traversed_width_median_m": b.get("traversed_width_median_m"),
+                "H_reduction_on_wave_path": b.get("H_reduction_on_wave_path"),
+                "E_reduction_on_wave_path": b.get("E_reduction_on_wave_path"),
                 "out_of_domain": b.get("out_of_domain"),
                 "bed_on_wave_path": b.get("bed_on_wave_path"),
                 "phaseb_status": b.get("status"),
@@ -269,6 +292,27 @@ def main() -> int:
     print("  Every other site stops on physics or on the receptor term, not on "
           "missing data.")
     print(f"\nWrote {OUT / 'NATIONAL_RESULTS_TABLE.csv'}")
+    # ---- markdown, so the handover note never re-types a number ----
+    md = []
+    md.append("| # | site | tier | exposed receptors | attenuation | euro |")
+    md.append("|---|---|---|---|---|---|")
+    for i, r in enumerate(tab.itertuples(), start=1):
+        exp = r.exposed_receptors_tag_based
+        dwl = getattr(r, "exposed_receptors_dwelling_like", None)
+        if exp is None or (isinstance(exp, float) and np.isnan(exp)):
+            exps = "not screened"
+        elif int(exp) == 0:
+            exps = "0"
+        else:
+            d = ("-" if dwl is None or (isinstance(dwl, float) and np.isnan(dwl))
+                 else int(dwl))
+            exps = f"{int(exp)} tagged, **{d} dwelling-like**"
+        att = str(r.attenuation).replace("|", "/")
+        md.append(f"| {i} | **{r.cluster}** {r.county} - {r.place} | "
+                  f"{r.habitat_tier} | {exps} | {att} | {r.euro} |")
+    (OUT / "NATIONAL_RESULTS_TABLE.md").write_text(
+        chr(10).join(md) + chr(10), encoding="utf-8")
+    print(f"Wrote {OUT / 'NATIONAL_RESULTS_TABLE.md'}")
     return 0
 
 
