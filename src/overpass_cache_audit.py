@@ -577,14 +577,26 @@ def phase_compare(log) -> list:
         log("no holdout manifest; run --phase holdout first.")
         return []
     man = json.loads(HOLD_MANIFEST.read_text(encoding="utf-8"))
-    sources = {k: (HOLD, v) for k, v in man["entries"].items()}
+
+    # A LIST, not a dict keyed by hash. The first version of this used
+    # setdefault on the query hash, and it silently dropped four comparisons:
+    # a query the banned mirror answered with 0 was quarantined, then RE-ASKED
+    # by the callers after the first audit, so a second file with the SAME
+    # HASH existed live and was later held out. Keying by hash kept the good
+    # copy and skipped the poisoned one -- so the four entries that most
+    # needed comparing were the four that were not compared.
+    #
+    # It was caught the same way two of the 28 August bugs were caught: two of
+    # our own numbers disagreed. The header said "21 already in quarantine"
+    # where 25 files are quarantined, and "THE BANNED INSTANCE'S OWN ENTRIES:
+    # 17" where 21 carry its fingerprint. Both gaps were exactly 4.
+    sources = [(HOLD, k, v) for k, v in man["entries"].items()]
 
     # The QUARANTINE is compared too, and it is where the poisoning
-    # measurement actually lives. The 21 banned-instance entries and the 4
-    # entries the first audit over-quarantined were removed from the cache
-    # before this session, so they are not in the holdout manifest -- and
-    # leaving them out would mean comparing everything EXCEPT the files known
-    # to be bad.
+    # measurement actually lives. The banned-instance entries and the ones the
+    # first audit over-quarantined were removed from the cache before this
+    # session, so they are not in the holdout manifest -- and leaving them out
+    # would mean comparing everything EXCEPT the files known to be bad.
     for qd in (QUAR, QUAR2):
         if not qd.exists():
             continue
@@ -592,10 +604,10 @@ def phase_compare(log) -> list:
             if f.name.endswith(".meta.json"):
                 continue
             r = classify(f)
-            sources.setdefault(r["key"], (qd, r))
+            sources.append((qd, r["key"], r))
 
     rows = []
-    for key, (srcdir, old) in sources.items():
+    for srcdir, key, old in sources:
         fresh_p = OSM_CACHE / ("overpass_%s.json" % key)
         held_p = srcdir / old["file"]
         rec = {"key": key, "cached_n": old.get("n_elements"),
@@ -603,11 +615,27 @@ def phase_compare(log) -> list:
                "was_instance": old.get("instance"),
                "held_in": srcdir.name}
         if not fresh_p.exists():
-            # Nothing re-asked this query. That is information, not a pass:
-            # it means no caller in the current pipeline issues it any more.
-            rec["verdict"] = "NOT_REASKED"
-            rows.append(rec)
-            continue
+            # No fresh answer in the live cache. Before calling this
+            # unmeasured, check for a VERIFIED answer to the same query
+            # elsewhere: when the first audit quarantined a poisoned entry,
+            # the callers re-asked and wrote a new file under the SAME HASH,
+            # which this session then held out. That held-out file is a
+            # verified endpoint's answer to exactly this query, and comparing
+            # against it measures what the banned instance cost -- which is
+            # the whole point and would otherwise be reported as NOT_REASKED.
+            alt_p = HOLD / ("overpass_%s.json" % key)
+            alt_ok = (srcdir != HOLD and alt_p.exists()
+                      and classify(alt_p).get("instance") == "VERIFIED")
+            if not alt_ok:
+                # Nothing re-asked this query and nothing else answered it.
+                # That is information, not a pass: no caller in the current
+                # pipeline issues it any more.
+                rec["verdict"] = "NOT_REASKED"
+                rows.append(rec)
+                continue
+            fresh_p = alt_p
+            rec["compared_against"] = "verified answer held out from the " \
+                                      "cache (same query hash)"
         fresh = json.loads(fresh_p.read_text(encoding="utf-8"))
         try:
             held = json.loads(held_p.read_text(encoding="utf-8"))
@@ -631,10 +659,17 @@ def phase_compare(log) -> list:
     v = {}
     for r in rows:
         v[r["verdict"]] = v.get(r["verdict"], 0) + 1
-    log("compared: %d entries  (%d held out this session, %d already in "
-        "quarantine)"
-        % (len(rows), sum(1 for r in rows if r["held_in"] == HOLD.name),
-           sum(1 for r in rows if r["held_in"] != HOLD.name)))
+    nh = sum(1 for r in rows if r["held_in"] == HOLD.name)
+    nq = len(rows) - nh
+    log("compared: %d cached responses  (%d held out this session, %d "
+        "already in quarantine)" % (len(rows), nh, nq))
+    dup = len({r["key"] for r in rows}) != len(rows)
+    if dup:
+        log("   NOTE: %d responses share a query hash with another -- the "
+            "same query was answered twice, once by the banned instance and"
+            % (len(rows) - len({r["key"] for r in rows})))
+        log("   once by a verified one. BOTH are compared; keying this table "
+            "by hash would drop the poisoned half.")
     for k in sorted(v):
         log("   %-13s %d" % (k, v[k]))
     log("")
@@ -665,6 +700,15 @@ def phase_compare(log) -> list:
         "query)" % sum(1 for r in banned if r["verdict"] == "NOT_REASKED"))
     log("   total elements recovered: %d"
         % sum(r.get("fresh_n", 0) for r in banned))
+    viaheld = [r for r in banned if r.get("compared_against")]
+    if viaheld:
+        log("   of the re-asked, %d were measured against a verified answer "
+            "to the same" % len(viaheld))
+        log("   query that already existed in the cache (the first audit's "
+            "own re-ask):")
+        for r in viaheld:
+            log("      %s  banned said %d -> verified says %d"
+                % (r["key"], r["cached_n"], r["fresh_n"]))
 
     over = [r for r in rows
             if r["held_in"] == QUAR.name and r.get("was_instance") != "BANNED"]
@@ -681,7 +725,8 @@ def phase_compare(log) -> list:
     diff = [r for r in rows if r["verdict"] == "DIFFERS"]
     if diff:
         log("")
-        log("DIFFERS: %d. OSM is a live database and this cache was written")
+        log("DIFFERS: %d. OSM is a live database and this cache was written"
+            % len(diff))
         log("   over two days, so a small symmetric change is somebody")
         log("   editing the map, not contamination. Direction and size are")
         log("   reported so the reader judges rather than the script:")
