@@ -87,6 +87,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -104,7 +105,11 @@ from shapely.geometry import Point
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import asset_classes as ac  # noqa: E402
-from anaird_phaseb import D_VALID, reproduce_sherkin  # noqa: E402
+from anaird_phaseb import (CELL_HA, D_VALID, GRID_M,  # noqa: E402
+                           grid_axes as itm_grid_axes, headline,
+                           load_npws_local, per_axis_cell_table,
+                           rasterise, reproduce_sherkin,
+                           sample_infomar, saturation_check)
 from damage_function_check import check as damage_check  # noqa: E402
 from national_phaseb import (BEARING_PRIMARY, SATURATION_STOP,  # noqa: E402
                              analyse_site, analyse_site_e1,
@@ -207,6 +212,101 @@ def ensure_wave_directions(need: pd.DataFrame, wave: pd.DataFrame) -> pd.DataFra
 # ======================================================================
 # what is exposed, per cluster
 # ======================================================================
+
+def analyse_site_e1_full(row, wave_from: float, wave_to: float,
+                         radius_m: float = 2000.0) -> dict:
+    """The FULL Sherkin chain at an E1 survey-record site.
+
+    `national_phaseb.analyse_site_e1` deliberately stops at the bearing test,
+    on a premise that the widened screen has falsified: "All three E1 sites
+    came back with zero exposed receptors". They did -- as BUILDINGS. Once
+    roads, tracks and coastal works are counted, E1 sites do flag, and the
+    28 August note's own limitation 10 says what happens then: "If an E1 site
+    ever flags as exposed it takes the full anaird_phaseb.py chain instead."
+
+    This is that chain, assembled from the imported pieces that produced the
+    An Aird result -- NPWS survey polygons rasterised on the same lattice,
+    INFOMAR depths sampled per cell, the same per-axis run-length walk, the
+    same interpolation at the site's own wave bearing, the same saturation
+    domain check. Nothing is re-implemented.
+
+    It is EXPENSIVE (INFOMAR sampling, which has gone down mid-run twice in
+    this project) and it is cached per site by `sample_infomar` itself, so an
+    outage costs wall clock and not work.
+    """
+    from pyproj import Transformer
+    to_itm = Transformer.from_crs(WGS, ITM, always_xy=True)
+    cl = int(row.cluster)
+    res = {"cluster": cl, "bed_source": "npws_survey_polygon",
+           "chain": "full_anaird_phaseb", "wave_from_deg": wave_from,
+           "wave_to_deg": wave_to}
+    cx, cy = to_itm.transform(float(row.lon), float(row.lat))
+    half = radius_m + 200.0
+    dlat = (half + 600.0) / 111000.0
+    dlon = dlat / math.cos(math.radians(float(row.lat)))
+    bbox = (float(row.lon) - dlon, float(row.lat) - dlat,
+            float(row.lon) + dlon, float(row.lat) + dlat)
+    lam = load_npws_local(bbox)["laminaria"]
+    if lam is None or not len(lam):
+        res["status"] = "no_npws_laminaria_polygon"
+        return res
+    xs, ys = itm_grid_axes(cx, cy, half, GRID_M)
+    mask = rasterise(lam.geometry.values, xs, ys)
+    XX, YY = np.meshgrid(xs, ys)
+    dist = np.hypot(XX - cx, YY - cy)
+    mask = mask & (dist <= radius_m)
+    res["cells_in_polygon"] = int(mask.sum())
+    if not mask.sum():
+        res["status"] = "no_survey_cells_within_radius"
+        return res
+
+    depth = sample_infomar(xs, ys, mask, "e1full_c%d" % cl)
+    d = depth[mask & np.isfinite(depth)]
+    res["cells_with_depth"] = int(d.size)
+    if d.size:
+        res["bed_depth_m"] = {"n": int(d.size), "min": round(float(d.min()), 1),
+                              "median": round(float(np.median(d)), 1),
+                              "max": round(float(d.max()), 1),
+                              "note": "INFOMAR, metres below LAT, positive down"}
+    in_band = mask & np.isfinite(depth) & (depth >= D_VALID[0]) & (depth <= D_VALID[1])
+    res["cells_in_depth_band"] = int(in_band.sum())
+    res["ha_in_depth_band"] = round(float(in_band.sum()) * CELL_HA, 2)
+    if not in_band.sum():
+        # Same two named sides as the E2/E3 path. Both stop the chain and
+        # neither is a data gap.
+        if d.size and float(np.median(d)) < D_VALID[0]:
+            res["status"] = "bed_too_shallow_for_coefficient"
+        elif d.size and float(np.median(d)) > D_VALID[1]:
+            res["status"] = "bed_too_deep_for_coefficient"
+        else:
+            res["status"] = "no_bed_in_dubi_torum_depth_range"
+        return res
+
+    cells = per_axis_cell_table(in_band, depth)
+    if cells.empty:
+        res["status"] = "no_cell_with_depth_in_bed"
+        return res
+    head = headline(cells, wave_to)
+    res["attenuation"] = head
+    axis = head["bracketing_axes"][1] if head["weight_on_upper"] >= 0.5         else head["bracketing_axes"][0]
+    sat = saturation_check(cells, axis)
+    res["saturation"] = {
+        "axis_checked": axis,
+        "traversed_width_median_m": round(float(sat.width_m.median()), 1),
+        "width_for_50pct_loss_median_m": round(
+            float(sat.width_for_50pct_loss_m.median()), 1),
+        "ratio_median": round(float(sat.ratio_width_to_50pct.median()), 3),
+        "sherkin_reference_ratio": 0.23,
+        "stop_threshold": SATURATION_STOP}
+    res["out_of_domain"] = bool(sat.ratio_width_to_50pct.median() > SATURATION_STOP)
+    res["status"] = "out_of_domain" if res["out_of_domain"] else "in_domain"
+
+    bear = (np.degrees(np.arctan2(XX - cx, YY - cy)) + 360.0) % 360.0
+    on_path = _ang_diff(bear, wave_from) <= BEARING_PRIMARY
+    res["bed_on_wave_path"] = bool((in_band & on_path).sum() > 0)
+    res["ha_on_wave_path"] = round(float((in_band & on_path).sum()) * CELL_HA, 2)
+    return res
+
 
 def _ang_diff(a, b):
     """Smallest absolute angle between two compass bearings, in degrees."""
@@ -528,7 +628,48 @@ def main() -> int:
                   % (wf, wt, float(w.concentration_R)))
             try:
                 if str(c.evidence_class).startswith("E1"):
-                    hab = analyse_site_e1(c, wf, wt)
+                    # The 28 Aug limitation 10 rule: an E1 site that flags as
+                    # exposed takes the FULL chain, not the bearing test only.
+                    # That premise ("all three E1 sites came back with zero
+                    # exposed receptors") held for buildings and does not hold
+                    # for roads, tracks and coastal works.
+                    #
+                    # The full chain is run where it can change a cell. Its
+                    # only output is an attenuation percentage, and that feeds
+                    # ONLY the replacement-cost row: the avoided-damage row is
+                    # already "not computable" under R2 wherever a receptor is
+                    # exposed, whatever the percentage. Replacement cost in
+                    # turn needs Shabman & Batie condition 3. So the chain is
+                    # run when the site flags AND a coastal PROTECTION
+                    # structure is mapped at the frontage; otherwise the
+                    # bearing test is reported and the reason is stated, not
+                    # left as a silence.
+                    dem_pre = demand_evidence(sub) if len(sub) else {
+                        "sb3_demonstrated_demand": False}
+                    flagged_here = int(c.n_exposed) > 0
+                    if flagged_here and dem_pre["sb3_demonstrated_demand"]:
+                        print("   E1 site with exposed receptors AND a mapped "
+                              "coastal protection structure -> running the "
+                              "FULL anaird_phaseb chain (28 Aug limitation 10)")
+                        hab = analyse_site_e1_full(c, wf, wt)
+                    else:
+                        hab = analyse_site_e1(c, wf, wt)
+                        if flagged_here:
+                            hab["status"] = (
+                                "e1_bearing_test_only_full_chain_not_needed")
+                            hab["full_chain_skipped_because"] = (
+                                "This E1 site DOES have exposed receptors, so "
+                                "the 28 Aug premise for stopping at the "
+                                "bearing test no longer holds. The full chain "
+                                "was still not run, for a different and "
+                                "stated reason: its only output is an "
+                                "attenuation percentage, which feeds only the "
+                                "replacement-cost row, and that row is barred "
+                                "here by Shabman & Batie condition 3 (no "
+                                "coastal protection structure is mapped at "
+                                "this frontage). The avoided-damage row is "
+                                "'not computable' under R2 regardless of the "
+                                "percentage.")
                 else:
                     hab = analyse_site(c, cells_all, wf, wt)
             except Exception as exc:                          # noqa: BLE001
@@ -551,6 +692,8 @@ def main() -> int:
                   "run. A guessed bearing is worse than none.")
 
         row["habitat_status"] = hab.get("status")
+        if hab.get("full_chain_skipped_because"):
+            row["full_chain_skipped_because"] = hab["full_chain_skipped_because"]
         if "bearing_ha" in hab:
             row["habitat_ha_1km_any_direction"] = hab.get("bearing_ha_no_test_1km")
             row["habitat_ha_1km_on_wave_path"] = hab.get("bearing_ha_primary_1km")
