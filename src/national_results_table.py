@@ -110,6 +110,19 @@ def main() -> int:
         "ortho*/ortho_manifest*.csv"))
     ortho = (pd.concat([pd.read_csv(m) for m in mans], ignore_index=True)
              if mans else pd.DataFrame())
+    # DE-DUPLICATE. The glob assumes each manifest holds a distinct set of
+    # buildings, and that assumption broke on 2026-08-28 when cluster 991's
+    # verdicts were merged into the main manifest AND left in their own
+    # per-cluster file: the concat then counted every 991 building twice and
+    # the table reported 2 dwelling-like where the manifest has 1. An osm_id
+    # identifies a building uniquely, so keeping the first occurrence is
+    # exact, not a heuristic.
+    if len(ortho) and "osm_id" in ortho.columns:
+        n0 = len(ortho)
+        ortho = ortho.drop_duplicates(subset=["osm_id"], keep="first")
+        if len(ortho) != n0:
+            print(f"  de-duplicated {n0 - len(ortho)} repeated osm_id rows "
+                  f"across the manifests ({n0} -> {len(ortho)})")
     if mans:
         print(f"  orthophoto manifests read: {[m.name for m in mans]} "
               f"({len(ortho)} buildings, "
