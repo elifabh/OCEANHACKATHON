@@ -106,7 +106,8 @@ from wide_receptor_screen import (BANNED_GENERATOR_PREFIXES,  # noqa: E402
                                   OVERPASS_MIRRORS, BannedInstanceError,
                                   _count_total, _is_empty_claim,
                                   _overpass_post, instance_fingerprint,
-                                  mirror_coverage_selftest, query_key)
+                                  guard_selftest, mirror_coverage_selftest,
+                                  query_key)
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "outputs" / "asset_screen"
@@ -678,6 +679,15 @@ def main() -> int:
         log("      cost: %s" % meta["cost"])
     log("")
 
+    log("GUARD SELF-TEST -- do the guards stop a banned response?")
+    log("   A tool should show its instrument works before reporting")
+    log("   measurements from it.")
+    gs = guard_selftest(live=not args.skip_selftest)
+    for k, v in gs.items():
+        log("   %-34s %s  %s" % (k, "PASS" if v["passed"] else "FAIL",
+                                 v.get("detail", "")))
+    log("")
+
     if not args.skip_selftest:
         log("MIRROR COVERAGE SELF-TEST (Cork + Galway building counts):")
         cov = mirror_coverage_selftest()
@@ -703,6 +713,7 @@ def main() -> int:
         "banned": OVERPASS_BANNED,
         "verified_generators": VERIFIED_GENERATORS,
         "mirror_coverage": cov,
+        "guard_selftest": gs,
         "entries": recs,
         "phase_b": results,
     }, ensure_ascii=False, indent=1), encoding="utf-8")

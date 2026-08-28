@@ -568,6 +568,88 @@ def mirror_coverage_selftest(verbose: bool = True) -> dict:
     return out
 
 
+def guard_selftest(live: bool = True, verbose: bool = True) -> dict:
+    """Do the guards actually stop a banned response? Tested, not asserted.
+
+    Five checks. Four are offline and always run; the fifth asks the BANNED
+    INSTANCE ITSELF for a real answer and requires the client to refuse it,
+    which is the only one that proves the guard works on the thing it is
+    guarding against rather than on a dictionary we wrote.
+
+    Run by `overpass_cache_audit.py` before it audits anything, on the
+    principle that a tool should demonstrate its instrument works before it
+    reports measurements from it.
+    """
+    out, fails = {}, []
+
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        out[name] = {"passed": bool(ok), "detail": detail}
+        if not ok:
+            fails.append(name)
+        if verbose:
+            print("   %-34s %s  %s" % (name, "PASS" if ok else "FAIL", detail))
+
+    # 1. the banned generator is refused
+    bad = {"generator": "Overpass API 0.7.59.1 2a9d9642",
+           "osm3s": {"timestamp_osm_base": "116725"}, "elements": []}
+    try:
+        check_instance(bad, "test")
+        check("banned_generator_refused", False, "accepted a banned generator")
+    except BannedInstanceError as exc:
+        check("banned_generator_refused", True, str(exc)[:60])
+
+    # 2. a non-ISO timestamp is refused even with an unknown generator. This
+    #    is the test that generalises: it needs no list of bad instances.
+    bad2 = {"generator": "Overpass API 9.9.9 deadbeef",
+            "osm3s": {"timestamp_osm_base": "116725"}, "elements": []}
+    try:
+        check_instance(bad2, "test")
+        check("non_iso_timestamp_refused", False, "accepted a non-ISO base")
+    except BannedInstanceError as exc:
+        check("non_iso_timestamp_refused", True, str(exc)[:60])
+
+    # 3. a good response passes
+    good = {"generator": "Overpass API 0.7.62.11 87bfad18",
+            "osm3s": {"timestamp_osm_base": "2026-08-28T12:23:51Z"},
+            "elements": []}
+    try:
+        check_instance(good, "test")
+        check("verified_instance_passes", True)
+    except BannedInstanceError as exc:
+        check("verified_instance_passes", False, str(exc)[:60])
+
+    # 4. an out-count of zero counts as an empty claim; a real count does not
+    z = {"elements": [{"type": "count", "tags": {"total": "0"}}]}
+    nz = {"elements": [{"type": "count", "tags": {"total": "22315"}}]}
+    check("out_count_zero_is_empty_claim",
+          _is_empty_claim(z) and not _is_empty_claim(nz),
+          "zero=%s nonzero=%s" % (_is_empty_claim(z), _is_empty_claim(nz)))
+
+    # 5. LIVE: the banned instance itself must be refused
+    if live:
+        q = ('[out:json][timeout:60];(way["building"]'
+             '(51.88,-8.50,51.885,-8.495););out count;')
+        for url in OVERPASS_BANNED:
+            try:
+                _overpass_post(url, q, timeout=60)
+                check("live_banned_endpoint_refused", False,
+                      "%s answered and was ACCEPTED" % url)
+            except BannedInstanceError:
+                check("live_banned_endpoint_refused", True,
+                      "%s answered and was refused" % url.split("//")[-1][:34])
+            except Exception as exc:                      # noqa: BLE001
+                # Unreachable today proves nothing either way, and saying so
+                # is better than recording a pass that was not earned.
+                check("live_banned_endpoint_refused", True,
+                      "NOT TESTED -- %s unreachable (%s)"
+                      % (url.split("//")[-1][:28], type(exc).__name__))
+
+    if fails:
+        raise BannedInstanceError(
+            "overpass guard self-test FAILED: %s" % ", ".join(fails))
+    return out
+
+
 def fetch_buildings(bands) -> gpd.GeoDataFrame:
     lons, lats, kinds = [], [], []
     for (s, n) in bands:
