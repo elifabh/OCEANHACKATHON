@@ -461,15 +461,25 @@ class FetchSampler:
         # is flagged when the two disagree.
         tied = d <= dmin + TIE_TOL_M
         tv = vals[tied]
+        # Coordinates of the nearest sea cell, so a caller can ask which
+        # DIRECTION the water a receptor faces lies in. Added 2026-08-28 for
+        # the per-receptor fetch bearing; purely ADDITIVE -- every existing
+        # key keeps its value, so no published number can move.
+        # `d` was reassigned to d[inside] above, so argmin indexes the
+        # in-radius subset; xs/ys were not, hence the [inside] here.
+        k = int(np.argmin(d))
+        sx, sy = float(xs[inside][k]), float(ys[inside][k])
         return {"fetch_nearest_min": float(tv.min()), "fetch_nearest_max": float(tv.max()),
                 "n_tied": int(tied.sum()),
                 "fetch_max": float(np.nanmax(vals)),
-                "dist_to_sea_m": dmin, "n_sea_cells": int(inside.sum())}
+                "dist_to_sea_m": dmin, "n_sea_cells": int(inside.sum()),
+                "sea_x_bng": sx, "sea_y_bng": sy}
 
     @staticmethod
     def _empty() -> dict:
         return {"fetch_nearest_min": np.nan, "fetch_nearest_max": np.nan, "n_tied": 0,
-                "fetch_max": np.nan, "dist_to_sea_m": np.nan, "n_sea_cells": 0}
+                "fetch_max": np.nan, "dist_to_sea_m": np.nan, "n_sea_cells": 0,
+                "sea_x_bng": np.nan, "sea_y_bng": np.nan}
 
 
 # ----------------------------------------------------------------------

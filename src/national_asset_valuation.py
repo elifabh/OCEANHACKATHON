@@ -33,6 +33,15 @@ R1  If NO receptor of any of the 50 classes is below 5 m facing gate-passing
     have returned non-zero now covers roads, piers, utilities, public assets
     and land parcels rather than buildings alone.
 
+R1b A receptor whose every GLO-30 sample falls on the product's
+    water-flattened 0.0 has NO ground elevation. It cannot enter the < 5 m
+    band, so it cannot be "exposed" -- and a pier, quay or slipway standing
+    in the sea is exactly such a receptor in a 30 m surface model. R1 is
+    therefore NOT available at a cluster that has one on gate-passing water:
+    an unknown elevation is not a low one and it is not a high one, and
+    resting a zero on the DSM's inability to measure the assets that stand
+    in the water would manufacture safety. Those clusters go to R2.
+
 R2  If any receptor IS exposed, the row closes at **not computable**, and
     the cell states WHAT is exposed. It does not state a euro, because
     `damage_function_check` finds no published avoided-damage method whose
@@ -199,6 +208,37 @@ def ensure_wave_directions(need: pd.DataFrame, wave: pd.DataFrame) -> pd.DataFra
 # what is exposed, per cluster
 # ======================================================================
 
+def _ang_diff(a, b):
+    """Smallest absolute angle between two compass bearings, in degrees."""
+    d = np.abs((np.asarray(a, dtype=float) - float(b) + 180.0) % 360.0 - 180.0)
+    return d
+
+
+def add_wave_facing(rec: pd.DataFrame, wave_from: float) -> pd.DataFrame:
+    """Does each receptor FACE the incoming waves?
+
+    The per-receptor fetch bearing (`sea_bearing_deg`, the true azimuth from
+    the receptor to the nearest sea cell) tested against the site's own
+    measured wave direction. This is the An Aird bearing test applied to the
+    RECEPTOR rather than to the habitat: a road whose water lies to the east
+    on a coast whose waves arrive from the west is behind the headland, not
+    behind the kelp.
+
+    +/- BEARING_PRIMARY (60 deg) is the same half-width the habitat test
+    uses, imported, not re-chosen. It is OUR choice, not a published
+    standard -- carried unchanged from the An Aird note.
+    """
+    rec = rec.copy()
+    if "sea_bearing_deg" not in rec.columns or wave_from is None:
+        rec["faces_wave_sector"] = np.nan
+        return rec
+    b = pd.to_numeric(rec.sea_bearing_deg, errors="coerce")
+    rec["sea_bearing_deg"] = b
+    rec["wave_facing_offset_deg"] = _ang_diff(b.values, wave_from)
+    rec["faces_wave_sector"] = rec.wave_facing_offset_deg <= BEARING_PRIMARY
+    return rec
+
+
 def coastline_for_cluster(lon: float, lat: float) -> gpd.GeoDataFrame:
     """The cluster's coastline, from the SAME cached Overpass query the screen
     issued.
@@ -244,10 +284,26 @@ def exposure_statement(rec: pd.DataFrame) -> dict:
     with every line, because a zero in a low-completeness class is not an
     absence.
     """
+    # Receptors with NO ground elevation because GLO-30 flattened every
+    # sample to water. They cannot be `exposed` by the band test, and for a
+    # pier or slipway standing in the sea that is a limitation of the DSM,
+    # not a finding of safety. Reported beside the count, never inside it.
+    water = rec[rec.all_samples_water & rec.gate_pass_strict] if len(rec) \
+        else rec
+    water_classes = sorted({k for ks in water.classes.astype(str)
+                            for k in ks.split(";")}) if len(water) else []
+
     ex = rec[rec.exposed]
     if not len(ex):
-        return {"n": 0, "classes": [], "text": "nothing below 5 m facing "
-                                               "gate-passing water"}
+        return {"n": 0, "classes": [],
+                "n_water_flattened_on_gate_water": int(len(water)),
+                "water_flattened_classes": water_classes,
+                "text": ("nothing below 5 m facing gate-passing water"
+                         + ("; but %d receptor(s) on gate-passing water have "
+                            "NO GLO-30 ground elevation at all (every sample "
+                            "water-flattened): %s"
+                            % (len(water), ", ".join(water_classes))
+                            if len(water) else ""))}
     rows = []
     for key in ac.KEYS:
         m = ex.classes.astype(str).str.split(";").apply(lambda ks, k=key: k in ks)
@@ -269,7 +325,12 @@ def exposure_statement(rec: pd.DataFrame) -> dict:
     rows.sort(key=lambda r: (-r["n"], r["class"]))
     text = "; ".join("%d %s (min %s m)" % (r["n"], r["class"], r["elev_min_m"])
                      for r in rows[:6])
-    return {"n": int(len(ex)), "classes": rows, "text": text}
+    if len(water):
+        text += ("; plus %d with no GLO-30 ground elevation (all samples "
+                 "water-flattened): %s" % (len(water), ", ".join(water_classes)))
+    return {"n": int(len(ex)), "classes": rows, "text": text,
+            "n_water_flattened_on_gate_water": int(len(water)),
+            "water_flattened_classes": water_classes}
 
 
 def demand_evidence(rec: pd.DataFrame) -> dict:
@@ -474,6 +535,16 @@ def main() -> int:
                 hab = {"status": "chain_failed: %s" % exc}
             row["wave_from_deg"] = wf
             row["wave_to_deg"] = wt
+            if len(sub):
+                sub = add_wave_facing(sub, wf)
+                exf = sub[sub.exposed]
+                n_face = int(exf.faces_wave_sector.sum()) if len(exf) else 0
+                row["n_exposed_facing_waves"] = n_face
+                row["n_exposed_not_facing_waves"] = int(len(exf) - n_face)
+                print("   per-receptor fetch bearing: %d of %d exposed "
+                      "receptors face the incoming waves (+/-%.0f deg); "
+                      "%d face water off the wave path"
+                      % (n_face, len(exf), BEARING_PRIMARY, len(exf) - n_face))
         else:
             hab = {"status": "no_wave_direction"}
             print("   NO measured wave direction -- the bearing test is not "
@@ -519,7 +590,8 @@ def main() -> int:
                      dem["marine_works"] or "-"))
 
         # ---- THE EURO CELL, by the pre-registered rules ----
-        if exp["n"] == 0:
+        n_wf = exp.get("n_water_flattened_on_gate_water", 0)
+        if exp["n"] == 0 and n_wf == 0:
             row["coastal_protection_eur"] = "EUR 0 - evidenced zero"
             row["euro_reason"] = (
                 "R1: no receptor of any of the %d screened classes is below "
@@ -527,6 +599,20 @@ def main() -> int:
                 "railways, coastal works, utilities, public assets and land "
                 "parcels, not buildings alone, and could have returned "
                 "non-zero." % len(ac.CLASSES))
+        elif exp["n"] == 0 and n_wf:
+            # An unknown elevation is not a low one -- and it is not a high
+            # one either. Calling this an evidenced zero would rest the zero
+            # on the DSM's inability to measure the very assets that stand in
+            # the water.
+            row["coastal_protection_eur"] = "not computable"
+            row["euro_reason"] = (
+                "R1 does not apply: no receptor is measurably below 5 m, but "
+                "%d receptor(s) on gate-passing water (%s) have NO GLO-30 "
+                "ground elevation at all -- every sample falls on the "
+                "product's water-flattened 0.0. An unknown elevation is not a "
+                "low one and not a high one, so the receptor term cannot be "
+                "closed at zero here."
+                % (n_wf, ", ".join(exp.get("water_flattened_classes", []))))
         else:
             row["coastal_protection_eur"] = "not computable"
             row["euro_reason"] = (

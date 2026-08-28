@@ -132,7 +132,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-from pyproj import Transformer
+from pyproj import Geod, Transformer
 from shapely.geometry import (LineString, MultiLineString, MultiPoint,
                               MultiPolygon, Point, Polygon)
 from shapely.ops import unary_union
@@ -176,7 +176,7 @@ BOX_HALF_M = 800.0                 # unchanged from the building screen
 BOXES_PER_QUERY = 5                # smaller than the building screen's 10:
                                    # `out geom` payloads are far larger than
                                    # `out center` ones
-CACHE_VERSION = 5
+CACHE_VERSION = 7
 
 GLO30_BASE = "https://copernicus-dem-30m.s3.amazonaws.com"
 
@@ -204,6 +204,25 @@ def hr(title: str = "") -> None:
 # ======================================================================
 
 MAX_PATCH_DEG = 0.5     # a patch is a CLUSTER-sized window, never a national one
+
+# TRUE bearings, not grid bearings. The fetch raster is EPSG:27700 (British
+# National Grid) and the wave directions are true compass bearings from CMEMS.
+# At -9.5 deg longitude BNG grid north is about 6 deg off true north
+# (convergence ~ (lambda - lambda0) * sin(phi)), which is large enough to move
+# a receptor in or out of a +/-60 deg sector near its edge. So the sea cell is
+# converted to WGS84 and the azimuth taken geodesically.
+_GEOD = Geod(ellps="WGS84")
+_BNG_TO_WGS = Transformer.from_crs("EPSG:27700", WGS, always_xy=True)
+
+
+def sea_bearing_true(lon: float, lat: float, sea_x_bng: float,
+                     sea_y_bng: float):
+    """True compass bearing FROM a receptor point TO the sea cell it faces."""
+    if not (np.isfinite(sea_x_bng) and np.isfinite(sea_y_bng)):
+        return None
+    slon, slat = _BNG_TO_WGS.transform(sea_x_bng, sea_y_bng)
+    az, _, _ = _GEOD.inv(lon, lat, slon, slat)
+    return float((az + 360.0) % 360.0)
 
 
 class Glo30Patch:
@@ -728,6 +747,14 @@ def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
                 "elev_max_m": (round(float(land.max()), 2) if land.size else None),
                 "all_samples_water": bool(e.size > 0 and land.size == 0),
                 "seaward_lon": sp_wgs[0], "seaward_lat": sp_wgs[1],
+                # the direction this receptor faces the water in -- the
+                # per-receptor fetch bearing. Tested against the site's own
+                # measured wave direction downstream.
+                "sea_bearing_deg": (
+                    None if sp_wgs[0] is None else
+                    sea_bearing_true(sp_wgs[0], sp_wgs[1],
+                                     f.get("sea_x_bng", float("nan")),
+                                     f.get("sea_y_bng", float("nan")))),
                 "fetch_min": (None if not np.isfinite(f["fetch_nearest_min"])
                               else round(float(f["fetch_nearest_min"]), 3)),
                 "fetch_max": (None if not np.isfinite(f["fetch_nearest_max"])
@@ -776,6 +803,7 @@ def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
         if not len(s):
             per_class[key] = {"n": 0, "n_low_5m": 0, "n_low_10m": 0,
                               "n_gate_pass": 0, "n_exposed": 0,
+                              "n_all_samples_water": 0,
                               "elev_min_m": None,
                               "completeness": ac.BY_KEY[key]["completeness"]}
             continue
@@ -786,6 +814,7 @@ def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
             "n_low_10m": int(s.low_10m.sum()),
             "n_gate_pass": int(s.gate_pass_strict.sum()),
             "n_exposed": int(s.exposed.sum()),
+            "n_all_samples_water": int(s.all_samples_water.sum()),
             "elev_min_m": (round(float(el.min()), 2) if len(el) else None),
             "completeness": ac.BY_KEY[key]["completeness"],
         }
@@ -801,6 +830,19 @@ def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
         "n_low_10m": int(rdf.low_10m.sum()) if len(rdf) else 0,
         "n_gate_pass": int(rdf.gate_pass_strict.sum()) if len(rdf) else 0,
         "n_exposed": int(rdf.exposed.sum()) if len(rdf) else 0,
+        # A receptor every one of whose GLO-30 samples is the product's
+        # water-flattened 0.0 has NO ground elevation, so it cannot enter
+        # `low_5m` and therefore cannot be `exposed`. That silently drops the
+        # single most exposed asset type there is: a pier, quay or slipway
+        # standing in the sea reads as water in a 30 m DSM. Excluding it from
+        # the band is right -- an unknown elevation is not a low one -- but
+        # excluding it from the REPORT would manufacture safety, so it is
+        # counted here and named in the exposure statement.
+        "n_all_samples_water": (int(rdf.all_samples_water.sum())
+                                if len(rdf) else 0),
+        "n_all_samples_water_gate_pass": (
+            int(rdf[(rdf.all_samples_water) & (rdf.gate_pass_strict)].shape[0])
+            if len(rdf) else 0),
         "n_exposed_high_completeness": (
             int(rdf[(rdf.exposed) & (rdf.completeness == "high")].shape[0])
             if len(rdf) else 0),
@@ -925,10 +967,11 @@ def main() -> int:
             summary, rdf = screen_cluster(row, assets, coast, fs, to_itm,
                                           to_wgs, log)
             log("   -> %d receptors in 500 m | %d below 5 m | %d pass gate "
-                "| %d EXPOSED (%d in high-completeness classes)"
+                "| %d EXPOSED (%d high-completeness) | %d all-water-pixel"
                 % (summary["n_assets"], summary["n_low_5m"],
                    summary["n_gate_pass"], summary["n_exposed"],
-                   summary["n_exposed_high_completeness"]))
+                   summary["n_exposed_high_completeness"],
+                   summary["n_all_samples_water"]))
 
             _save_cache(cl, {"summary": summary,
                              "receptors": rdf.to_dict(orient="records")})
