@@ -420,7 +420,18 @@ def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
     key = query_key(query)
     cached = OSM_CACHE / f"overpass_{key}.json"
     if cached.exists():
-        return json.loads(cached.read_text(encoding="utf-8"))
+        payload = json.loads(cached.read_text(encoding="utf-8"))
+        # Retro-fill the sidecar on a cache HIT. 227 entries predate sidecars
+        # and none of them records the question it answers, which is precisely
+        # why the first audit could only reach the callers somebody thought to
+        # rebuild by hand. A cache hit is the one moment the query text is in
+        # scope again, so it is written down then -- and the endpoint is
+        # recorded as unknown, because it genuinely is.
+        side = OSM_CACHE / f"overpass_{key}.meta.json"
+        if not side.exists():
+            _write_sidecar(key, query, "<unknown: cached before sidecars>",
+                           payload)
+        return payload
     # A banned instance must not be reachable through the mirror list either.
     # Cheap, and it turns "someone pasted the URL back" from a silent data
     # error into an immediate, loud one.
