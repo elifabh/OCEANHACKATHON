@@ -61,6 +61,31 @@ Jury criteria — every design decision is judged against these six:
 - INFOMAR F32 bathymetry: LAT datum, ~4.2 m resolution.
 - Overpass API needs a custom `User-Agent` header (default returns HTTP 406).
 
+### The Overpass mirror trap (2026-08-28, cost hours and a published table)
+- **`overpass.osm.ch` is BANNED. Never add it back.** It serves a
+  Switzerland-only database and answers Irish queries with HTTP 200, no
+  error, no `remark`, and zero elements. Its answers were cached, and in this
+  project a zero is a publishable finding.
+- The ban is enforced on the RESPONSE, not the URL: `check_instance()` in
+  `wide_receptor_screen.py` refuses any response whose `generator` matches a
+  banned instance **or** whose `osm3s.timestamp_osm_base` is not ISO-8601.
+  osm.ch reports the integer `116725`. Restoring its URL will therefore not
+  make it work; it will raise.
+- **A mirror is not a mirror until `mirror_coverage_selftest()` says so.** It
+  requires Irish data in two areas and an ISO database timestamp, and raises
+  if a listed mirror fails. Run it before adding any endpoint.
+- An empty result is confirmed on a second endpoint before it is believed or
+  cached, and "empty" includes `out count;` returning `total="0"` — a
+  non-empty response carrying a zero.
+- A zero no second endpoint could confirm is appended to
+  `data/osm/unconfirmed_empties.jsonl`. It is a result with a caveat, not a
+  result.
+- Every cache write lays down `overpass_<hash>.meta.json` with the query text,
+  the endpoint and its fingerprint. A cached response that does not record the
+  question it answers cannot be audited.
+- Audit with `src/overpass_cache_audit.py` (provenance), not
+  `src/overpass_audit.py` (emptiness only — superseded, kept for the record).
+
 ## 4. LOCKED FACTS — use verbatim, never recompute casually
 
 ### Defensible Sherkin figures
