@@ -242,6 +242,40 @@ OSM_CACHE = Path("data/osm")
 
 UNCONFIRMED_EMPTY_KEY = "_unconfirmed_empty"
 _EMPTY_STATS = {"confirmed": 0, "overturned": 0, "unconfirmed": 0}
+_UNCONFIRMED: list = []
+# An unconfirmed empty is a zero that nobody was able to check. Refusing to
+# CACHE it, which is what the 2026-08-28 fix did, stops it being inherited by
+# later runs -- but it is still handed to the caller, and the caller turns it
+# into "no receptors here" in this run's own output. The marker was set and
+# nothing ever read it; _EMPTY_STATS was incremented and never printed.
+#
+# So it is also written down, durably, keyed by query hash. A zero this
+# project could not confirm is a result with a caveat, and the caveat has to
+# survive the run that produced it.
+UNCONFIRMED_LOG = OSM_CACHE / "unconfirmed_empties.jsonl"
+
+
+def empty_report() -> dict:
+    """What happened to the empty results this process saw.
+
+    Call it at the end of a run and print it. `unconfirmed` > 0 means some
+    zero in this run's output was never checked against a second endpoint.
+    """
+    return {**_EMPTY_STATS, "unconfirmed_keys": list(_UNCONFIRMED)}
+
+
+def _record_unconfirmed(key: str, query: str, url: str) -> None:
+    rec = {"key": key, "endpoint": url,
+           "seen_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "query": query, "cached": False,
+           "why": "empty result that no second endpoint could confirm"}
+    _UNCONFIRMED.append(key)
+    try:
+        OSM_CACHE.mkdir(parents=True, exist_ok=True)
+        with UNCONFIRMED_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:                                     # noqa: BLE001
+        pass          # a logging failure must never take a screen down
 
 
 _ISO_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
@@ -448,9 +482,12 @@ def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
                 alt = _confirm_empty(query, exclude=url)
                 if alt is None:
                     _EMPTY_STATS["unconfirmed"] += 1
+                    _record_unconfirmed(key, query, url)
                     print("   Overpass returned EMPTY on %s and no other "
-                          "endpoint could confirm it; NOT cached" % url,
-                          file=sys.stderr)
+                          "endpoint could confirm it; NOT cached, and "
+                          "recorded in %s. Any zero this run reports for "
+                          "this query is UNCHECKED."
+                          % (url, UNCONFIRMED_LOG.name), file=sys.stderr)
                     payload = dict(payload)
                     payload[UNCONFIRMED_EMPTY_KEY] = True
                     return payload

@@ -261,6 +261,27 @@ def phase_a(log) -> list:
     log("   out count == 0   : %d"
         % sum(1 for r in recs if r.get("count_total") == 0))
 
+    # Zeros this project could not check. They are not in the cache -- that is
+    # the point of them -- so they cannot be found by walking the cache, and
+    # they are the one class of empty that never appears in any of the counts
+    # above. Each one is a zero that some run reported without a second
+    # opinion.
+    log("")
+    log("UNCONFIRMED EMPTIES (a zero no second endpoint could confirm):")
+    ulog = OSM_CACHE / "unconfirmed_empties.jsonl"
+    if not ulog.exists():
+        log("   none recorded. (The log is written by overpass() from "
+            "2026-08-28 session 2 onward; runs before that recorded the")
+        log("   event in a counter that was never printed, so an absence here "
+            "for an earlier run means 'not recorded', not 'none happened'.)")
+    else:
+        rows = [json.loads(x) for x in
+                ulog.read_text(encoding="utf-8").splitlines() if x.strip()]
+        log("   %d recorded" % len(rows))
+        for r in rows[-20:]:
+            log("      %s  %s  %s" % (r.get("seen_utc"), r.get("key"),
+                                      (r.get("endpoint") or "")[:44]))
+
     # The four that the first audit quarantined although they are not from the
     # banned instance. Naming them is the point: an over-quarantine is also an
     # error, and it removed four genuine measurements from the cache.
