@@ -173,7 +173,7 @@ CACHE = OUT / "cache"
 SAMPLE_STEP_M = 20.0
 MAX_SAMPLES_PER_FEATURE = 400      # a clipped 500 m disc cannot need more
 BOX_HALF_M = 800.0                 # unchanged from the building screen
-BOXES_PER_QUERY = 5                # smaller than the building screen's 10:
+BOXES_PER_QUERY = 8                # smaller than the building screen's 10:
                                    # `out geom` payloads are far larger than
                                    # `out center` ones
 CACHE_VERSION = 7
@@ -461,6 +461,47 @@ def _geom_from_element(el: dict):
     return None
 
 
+def _bbs(chunk) -> list:
+    return ["%.6f,%.6f,%.6f,%.6f" % (b[1], b[0], b[3], b[2]) for b in chunk]
+
+
+def _q_family(sels):
+    def build(chunk):
+        parts = "".join("%s(%s);" % (sel, bb)
+                        for bb in _bbs(chunk) for sel in sels)
+        return "[out:json][timeout:300];(%s);out geom tags;" % parts
+    return build
+
+
+def _q_coast(chunk) -> str:
+    parts = "".join('way["natural"="coastline"](%s);' % bb
+                    for bb in _bbs(chunk))
+    return "[out:json][timeout:300];(%s);out geom;" % parts
+
+
+def _split_query(build_query, chunk, retries: int = 4) -> dict:
+    """Union query over `chunk` boxes; SPLIT it rather than retry on failure.
+
+    Same fix as national_exposure_screen.overpass_split, and for the same
+    reason: a query too heavy for the surviving mirrors is not fixed by
+    asking it again. Splitting cannot change the answer -- the union of
+    per-box results is the same element set, and the caller de-duplicates by
+    osm_id.
+    """
+    try:
+        return overpass(build_query(chunk), retries=retries)
+    except Exception as exc:                                  # noqa: BLE001
+        if len(chunk) == 1:
+            raise
+        half = len(chunk) // 2
+        print("   union query over %d boxes failed (%s); splitting %d + %d"
+              % (len(chunk), str(exc)[:60], half, len(chunk) - half),
+              file=sys.stderr)
+        a = _split_query(build_query, chunk[:half], retries)
+        b = _split_query(build_query, chunk[half:], retries)
+        return {"elements": (a.get("elements") or []) + (b.get("elements") or [])}
+
+
 def fetch_assets_for_boxes(boxes: list, log) -> tuple:
     """All five families plus coastline over a list of WGS bboxes.
 
@@ -476,9 +517,7 @@ def fetch_assets_for_boxes(boxes: list, log) -> tuple:
         bbs = ["%.6f,%.6f,%.6f,%.6f" % (b[1], b[0], b[3], b[2]) for b in chunk]
 
         for fam, sels in FAMILY_SELECTORS.items():
-            parts = "".join("%s(%s);" % (s, bb) for bb in bbs for s in sels)
-            q = "[out:json][timeout:300];(%s);out geom tags;" % parts
-            payload = overpass(q)
+            payload = _split_query(_q_family(sels), chunk)
             n_new = 0
             for el in payload.get("elements", []):
                 oid = "%s/%s" % (el.get("type"), el.get("id"))
@@ -510,9 +549,7 @@ def fetch_assets_for_boxes(boxes: list, log) -> tuple:
             log("   boxes %d-%d %-16s +%d elements (%d total)"
                 % (i + 1, i + len(chunk), fam, n_new, len(rows)))
 
-        parts = "".join('way["natural"="coastline"](%s);' % bb for bb in bbs)
-        q_c = "[out:json][timeout:300];(%s);out geom;" % parts
-        for el in overpass(q_c).get("elements", []):
+        for el in _split_query(_q_coast, chunk).get("elements", []):
             pts = [(p["lon"], p["lat"]) for p in el.get("geometry", [])]
             if len(pts) >= 2:
                 clines.append(LineString(pts))
@@ -665,24 +702,25 @@ def _save_cache(cluster: int, payload: dict) -> None:
 # the screen, one cluster
 # ======================================================================
 
-def screen_cluster(row, assets: gpd.GeoDataFrame, coast_u, fs: FetchSampler,
-                   to_itm, to_wgs, log) -> tuple:
+def screen_cluster(row, assets_itm: gpd.GeoDataFrame, coast_itm,
+                   fs: FetchSampler, to_itm, to_wgs, log) -> tuple:
+    """Screen one cluster against the NATIONAL asset frame.
+
+    `assets_itm` is already in EPSG:2157 and `coast_itm` is already a single
+    unioned geometry, both built once in main(). Reprojecting a ~20 000-row
+    national frame and re-unioning the coastline inside this function -- as
+    the per-cluster version did -- would repeat that work 53 times.
+    """
     cl = int(row.cluster)
     cx, cy = to_itm.transform(float(row.lon), float(row.lat))
     centre = Point(cx, cy)
     disc = centre.buffer(RECEPTOR_RADIUS_M)
 
-    if len(assets):
-        a_itm = assets.to_crs(ITM)
-        hit = a_itm.geometry.intersects(disc)
-        near = a_itm[hit].copy()
+    if len(assets_itm):
+        idx = assets_itm.sindex.query(disc, predicate="intersects")
+        near = assets_itm.iloc[idx].copy()
     else:
-        near = assets.copy()
-
-    # ONE coastline union for the whole cluster. Computing it inside the
-    # per-receptor loop made shore distance O(n) unions per cluster.
-    coast_itm = (coast_u.to_crs(ITM).union_all()
-                 if coast_u is not None and len(coast_u) else None)
+        near = assets_itm.copy()
 
     recs: list = []
     if len(near):
@@ -926,6 +964,40 @@ def main() -> int:
     done_cached = 0
     stopped_on_budget = False
 
+    # ---- NATIONAL PRE-FETCH ----------------------------------------
+    # One batched pull for every box, instead of six queries per cluster.
+    # 53 clusters x 6 queries = 318 requests against an endpoint already
+    # returning 429/504 to most of them; batched it is ~40. The per-cluster
+    # JSON cache still guards the expensive GLO-30 and fetch work, and every
+    # Overpass response is still cached by query hash, so a re-run after an
+    # outage costs nothing. Skipped entirely when every cluster is cached.
+    boxes_all = []
+    for _, row in sel.iterrows():
+        cxb, cyb = to_itm.transform(float(row.lon), float(row.lat))
+        c0 = to_wgs.transform(cxb - BOX_HALF_M, cyb - BOX_HALF_M)
+        c1 = to_wgs.transform(cxb + BOX_HALF_M, cyb + BOX_HALF_M)
+        boxes_all.append((c0[0], c0[1], c1[0], c1[1]))
+
+    need_fetch = [int(r.cluster) for _, r in sel.iterrows()
+                  if args.refresh or _load_cache(int(r.cluster)) is None]
+    assets = coast = None
+    if need_fetch:
+        hr("OSM PRE-FETCH -- %d boxes, batched %d per query"
+           % (len(boxes_all), BOXES_PER_QUERY))
+        log("%d of %d clusters still need screening" % (len(need_fetch), len(sel)))
+        assets, coast, unc = fetch_assets_for_boxes(boxes_all, log)
+        for k, v in unc.items():
+            unclassified_all[k] = unclassified_all.get(k, 0) + v
+        log("   %d classified elements, %d coastline ways, nationally"
+            % (len(assets), len(coast)))
+        # Reproject and union ONCE, not once per cluster.
+        assets = assets.to_crs(ITM)
+        coast = (unary_union(coast.to_crs(ITM).geometry.values)
+                 if len(coast) else None)
+        assets.sindex  # build the spatial index eagerly, outside the loop
+    else:
+        log("every cluster is cached; no OSM fetch needed")
+
     try:
         for n, (_, row) in enumerate(sel.iterrows(), start=1):
             cl = int(row.cluster)
@@ -954,16 +1026,9 @@ def main() -> int:
 
             log("\n[%2d/%2d] cluster %-5d %-9s %s"
                 % (n, len(sel), cl, row.county, row.nearest_place))
-            cxb, cyb = to_itm.transform(float(row.lon), float(row.lat))
-            corners = [to_wgs.transform(cxb + dx * BOX_HALF_M, cyb + dy * BOX_HALF_M)
-                       for dx, dy in ((-1, -1), (1, 1))]
-            box = (corners[0][0], corners[0][1], corners[1][0], corners[1][1])
-            assets, coast, unc = fetch_assets_for_boxes([box], log)
-            for k, v in unc.items():
-                unclassified_all[k] = unclassified_all.get(k, 0) + v
-            log("   %d classified elements, %d coastline ways"
-                % (len(assets), len(coast)))
-
+            if assets is None:
+                log("   no national fetch available; skipped")
+                continue
             summary, rdf = screen_cluster(row, assets, coast, fs, to_itm,
                                           to_wgs, log)
             log("   -> %d receptors in 500 m | %d below 5 m | %d pass gate "
