@@ -487,25 +487,54 @@ def demand_evidence(rec: pd.DataFrame) -> dict:
     if not len(rec):
         return {"protection_structures": {}, "marine_works": {},
                 "sb3_demonstrated_demand": False, "basis": "no receptors"}
-    def counts(keys):
+
+    def counts(keys, frame):
         out = {}
         for k in keys:
-            m = rec.classes.astype(str).str.split(";").apply(
+            m = frame.classes.astype(str).str.split(";").apply(
                 lambda ks, kk=k: kk in ks)
             if int(m.sum()):
                 out[k] = int(m.sum())
         return out
-    prot = counts(PROTECTION_STRUCTURE_CLASSES)
-    marine = counts(MARINE_WORKS_CLASSES)
+
+    # A protection structure only counts as evidence of demand for COASTAL
+    # protection if it is plausibly a COASTAL defence -- that is, if it is
+    # itself low-lying and facing gate-passing water. The screen's own
+    # `exposed` flag is exactly that test, so no new threshold is introduced.
+    #
+    # This tightening was forced by the first national run, which reported
+    # Shabman & Batie condition 3 satisfied at four clusters. Two were false
+    # positives that elevation alone exposes: seven `barrier=retaining_wall`
+    # at cluster 88 sit between 15 m and 79 m on a hillside, and two
+    # `man_made=embankment` at cluster 231 sit at 18.7 m and 36.2 m. A wall at
+    # 79 m is not protecting anything from the sea. Counting them would have
+    # satisfied, for the first time in this project, the very condition that
+    # unlocks a replacement-cost VALUE rather than a counterfactual
+    # illustration -- on two road walls and a field bank.
+    prot_all = counts(PROTECTION_STRUCTURE_CLASSES, rec)
+    exposed_only = rec[rec.exposed] if "exposed" in rec.columns else rec.iloc[0:0]
+    prot = counts(PROTECTION_STRUCTURE_CLASSES, exposed_only)
+    marine = counts(MARINE_WORKS_CLASSES, rec)
+    if prot:
+        basis = ("a coastal protection structure is mapped at this frontage, "
+                 "low-lying and facing gate-passing water (%s)"
+                 % ", ".join("%s x%d" % (k, v) for k, v in prot.items()))
+    elif prot_all:
+        basis = ("protection-class structures are mapped here (%s) but NONE is "
+                 "low-lying and facing gate-passing water, so none is evidence "
+                 "of demand for COASTAL protection -- a retaining wall or "
+                 "embankment well above the shore is a road or field structure"
+                 % ", ".join("%s x%d" % (k, v) for k, v in prot_all.items()))
+    else:
+        basis = ("no coastal protection structure mapped at this frontage; "
+                 "marine works present (%s) are demand for a berth, not for "
+                 "shore protection" % (", ".join(marine) or "none"))
     return {
         "protection_structures": prot,
+        "protection_structures_any_elevation": prot_all,
         "marine_works": marine,
         "sb3_demonstrated_demand": bool(prot),
-        "basis": ("an existing coastal protection structure is mapped at this "
-                  "frontage (%s)" % ", ".join(prot) if prot else
-                  "no coastal protection structure mapped at this frontage; "
-                  "marine works present (%s) are demand for a berth, not for "
-                  "shore protection" % (", ".join(marine) or "none")),
+        "basis": basis,
     }
 
 
@@ -838,6 +867,8 @@ def main() -> int:
         row["sb3_demonstrated_demand"] = dem["sb3_demonstrated_demand"]
         row["sb3_basis"] = dem["basis"]
         row["protection_structures"] = json.dumps(dem["protection_structures"])
+        row["protection_structures_any_elevation"] = json.dumps(
+            dem.get("protection_structures_any_elevation", {}))
         row["marine_works"] = json.dumps(dem["marine_works"])
         if dem["protection_structures"] or dem["marine_works"]:
             print("   coastal works present: protection %s | berth %s"
