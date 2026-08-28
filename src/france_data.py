@@ -320,6 +320,9 @@ BDTOPO_LAYERS = {
                                   "the Irish screen also carried",
     "BDTOPO_V3:zone_d_activite_ou_d_interet": "named activity/interest zones, "
                                               "used to identify the port",
+    "BDTOPO_V3:limite_terre_mer": "the authoritative land-sea limit; the "
+                                  "shoreline every distance-to-shore gate is "
+                                  "measured from",
 }
 
 # --------------------------------------------------------- fetch machinery
