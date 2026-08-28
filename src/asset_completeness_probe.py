@@ -48,13 +48,20 @@ a negative. That is the `blind` verdict below.
 
 VERDICTS
 --------
-    observable_rural   found at rural clusters -- absence elsewhere is
-                       informative to the degree the class allows
-    urban_skewed       found in towns, absent or near-absent at the coast,
-                       with a per-box ratio at or above URBAN_SKEW_RATIO --
-                       treat rural zeros with caution
-    blind              found nowhere in either sample -- a rural zero is
-                       UNINFORMATIVE and may not be reported as absence
+    observable_rural           found at one or more rural clusters, so a zero
+                               at a given cluster is informative to the degree
+                               the class allows
+    absent_rural_present_urban found in the town boxes and at NO rural
+                               cluster -- treat rural zeros with caution
+    blind                      found nowhere in either sample -- a rural zero
+                               is UNINFORMATIVE and may not be reported as
+                               absence
+
+    The urban:rural DENSITY RATIO is reported for every class as context and
+    deliberately does NOT drive the verdict. Towns are denser in everything,
+    so a ratio cannot separate under-mapping from urbanity. The first version
+    of this script let it drive the verdict and labelled `road_minor`
+    under-mapped on 473 rural observations.
 
 The verdict is written beside every class in the output, and the handover
 note reproduces the `blind` and `urban_skewed` lists in full.
@@ -212,14 +219,34 @@ def main() -> int:
         c = ac.BY_KEY[k]
         r_per = rural_counts[k] / n_rural
         u_per = urban_counts[k] / n_urban
+        # VERDICT LOGIC, corrected 2026-08-28 after the first run produced an
+        # obviously wrong answer: it labelled `road_minor` "urban_skewed" on
+        # 473 rural observations, purely because towns are denser in roads.
+        # Density is not the question. Towns are denser in EVERYTHING, so a
+        # density ratio can never distinguish under-mapping from urbanity.
+        #
+        # The question is whether the class is OBSERVED AT ALL on the rural
+        # coast, because that is what decides whether a zero at one cluster
+        # carries information:
+        #
+        #   >0 rural            -> the class is observable here; a zero at a
+        #                          given cluster is informative to the degree
+        #                          the class allows. The density ratio is
+        #                          reported as context, not as a verdict.
+        #   0 rural, >0 urban   -> the class exists in Ireland and is not at
+        #                          our sites. This test CANNOT separate "the
+        #                          asset is genuinely urban" from "the class
+        #                          is only mapped in towns", so rural zeros
+        #                          get caution, not a negative finding.
+        #   0 rural, 0 urban    -> this pipeline cannot observe the class in
+        #                          Ireland at all. A rural zero carries NO
+        #                          information.
         if rural_counts[k] == 0 and urban_counts[k] == 0:
             verdict = "blind"
-        elif rural_counts[k] > 0 and (u_per <= URBAN_SKEW_RATIO * max(r_per, 1e-9)):
-            verdict = "observable_rural"
-        elif rural_counts[k] > 0:
-            verdict = "urban_skewed"
+        elif rural_counts[k] == 0:
+            verdict = "absent_rural_present_urban"
         else:
-            verdict = "urban_skewed"       # urban>0, rural==0
+            verdict = "observable_rural"
         ratio = (u_per / r_per) if r_per > 0 else (np.inf if u_per > 0 else np.nan)
         rows.append({
             "class": k, "family": c["family"], "label": c["label"],
@@ -250,7 +277,7 @@ def main() -> int:
                r["urban_per_box"], ratio, r["verdict"]))
 
     blind = df[df.verdict == "blind"]["class"].tolist()
-    skew = df[df.verdict == "urban_skewed"]["class"].tolist()
+    skew = df[df.verdict == "absent_rural_present_urban"]["class"].tolist()
     obs = df[df.verdict == "observable_rural"]["class"].tolist()
 
     log("\n" + "=" * 78)
@@ -258,8 +285,8 @@ def main() -> int:
     log("=" * 78)
     log("observable_rural (%d): a zero here is informative" % len(obs))
     log("   %s" % ", ".join(obs))
-    log("\nurban_skewed (%d): found in towns, absent/near-absent on the rural "
-        "coast." % len(skew))
+    log("\nabsent_rural_present_urban (%d): found in the town boxes and at NO "
+        "rural cluster." % len(skew))
     log("   TREAT RURAL ZEROS WITH CAUTION -- this test cannot separate 'the "
         "asset is\n   genuinely urban' from 'the class is only mapped in "
         "towns'.")
@@ -275,6 +302,8 @@ def main() -> int:
     log("=" * 78)
     dis = df[((df.prior_completeness == "high") & (df.verdict != "observable_rural"))
              | ((df.prior_completeness == "low") & (df.verdict == "observable_rural"))]
+    # A "low" prior that turns out observable is the interesting direction:
+    # it means the class IS mapped in rural Ireland after all.
     if len(dis):
         for _, r in dis.iterrows():
             log("   %-24s prior %-6s -> %s (rural %d, urban %d)"
