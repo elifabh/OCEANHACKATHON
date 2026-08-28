@@ -297,6 +297,52 @@ def glo30_neighbourhood(pts_wgs: list[tuple[float, float]]
 # OSM
 # ======================================================================
 
+def _bbs(chunk) -> list[str]:
+    return [f"{b[1]:.6f},{b[0]:.6f},{b[3]:.6f},{b[2]:.6f}" for b in chunk]
+
+
+def _q_buildings(chunk) -> str:
+    parts = "".join('way["building"](%s);relation["building"](%s);'
+                    'node["building"](%s);' % (bb, bb, bb)
+                    for bb in _bbs(chunk))
+    return "[out:json][timeout:300];(%s);out center tags;" % parts
+
+
+def _q_coastline(chunk) -> str:
+    parts = "".join('way["natural"="coastline"](%s);' % bb
+                    for bb in _bbs(chunk))
+    return "[out:json][timeout:300];(%s);out geom;" % parts
+
+
+def overpass_split(build_query, chunk, retries: int = 4) -> dict:
+    """Run a union query over `chunk` boxes; on repeated failure, SPLIT it.
+
+    Added 2026-08-28. The batch-of-10 buildings query for boxes 21-30 is
+    heavy enough that both surviving mirrors return 504 to it -- and that is
+    precisely the query whose 28 August failure let a Switzerland-only mirror
+    answer "0 buildings" and poison the cache for ten clusters. A retry loop
+    against the same too-big query is not a fix; a smaller query is.
+
+    Splitting cannot change the answer. The union of per-box results is the
+    same set of elements as the union query returns, and `fetch_osm_for_boxes`
+    already de-duplicates by osm_id. It only changes how much is asked for at
+    once.
+    """
+    q = build_query(chunk)
+    try:
+        return overpass(q, retries=retries)
+    except Exception as exc:                                  # noqa: BLE001
+        if len(chunk) == 1:
+            raise
+        half = len(chunk) // 2
+        print("   union query over %d boxes failed (%s); splitting into "
+              "%d + %d" % (len(chunk), str(exc)[:70], half, len(chunk) - half),
+              file=sys.stderr)
+        a = overpass_split(build_query, chunk[:half], retries)
+        b = overpass_split(build_query, chunk[half:], retries)
+        return {"elements": (a.get("elements") or []) + (b.get("elements") or [])}
+
+
 def fetch_osm_for_boxes(boxes: list[tuple]) -> tuple[gpd.GeoDataFrame,
                                                      gpd.GeoDataFrame]:
     """Buildings (full tags) and coastline for a list of WGS bboxes.
@@ -313,10 +359,7 @@ def fetch_osm_for_boxes(boxes: list[tuple]) -> tuple[gpd.GeoDataFrame,
         chunk = boxes[i:i + BOXES_PER_QUERY]
         bbs = [f"{b[1]:.6f},{b[0]:.6f},{b[3]:.6f},{b[2]:.6f}" for b in chunk]
 
-        parts = "".join('way["building"](%s);relation["building"](%s);'
-                        'node["building"](%s);' % (bb, bb, bb) for bb in bbs)
-        q_b = "[out:json][timeout:300];(%s);out center tags;" % parts
-        for el in overpass(q_b).get("elements", []):
+        for el in overpass_split(_q_buildings, chunk).get("elements", []):
             c = el.get("center") or {"lon": el.get("lon"), "lat": el.get("lat")}
             if c.get("lon") is None:
                 continue
@@ -327,9 +370,7 @@ def fetch_osm_for_boxes(boxes: list[tuple]) -> tuple[gpd.GeoDataFrame,
                           "tags": json.dumps(t, ensure_ascii=False),
                           "lon": c["lon"], "lat": c["lat"]})
 
-        parts = "".join('way["natural"="coastline"](%s);' % bb for bb in bbs)
-        q_c = "[out:json][timeout:300];(%s);out geom;" % parts
-        for el in overpass(q_c).get("elements", []):
+        for el in overpass_split(_q_coastline, chunk).get("elements", []):
             pts = [(p["lon"], p["lat"]) for p in el.get("geometry", [])]
             if len(pts) >= 2:
                 clines.append(LineString(pts))
