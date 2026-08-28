@@ -83,6 +83,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 import numpy as np
 import pandas as pd
 from pyproj import Transformer
+from shapely.geometry import box as shp_box
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -148,17 +149,30 @@ def main() -> int:
 
     # ---------------- urban ----------------
     log("\n-- URBAN reference boxes --")
+    # All six boxes in ONE batched pull (fetch_assets_for_boxes batches 8 per
+    # query), then attributed to a town by which box the element falls in.
+    # Six separate calls would be 36 Overpass requests against an endpoint
+    # that has been returning 429 all session, for exactly the same answer.
     urban_counts = {k: 0 for k in ac.KEYS}
     urban_boxes_with = {k: 0 for k in ac.KEYS}
-    for name, lon, lat in URBAN_BOXES:
-        box = box_around(lon, lat, to_itm, to_wgs)
-        assets, _, _ = fetch_assets_for_boxes([box], lambda m: None)
-        c = count_classes(assets)
+    tboxes = [(name, box_around(lon, lat, to_itm, to_wgs))
+              for name, lon, lat in URBAN_BOXES]
+    assets, _, _ = fetch_assets_for_boxes([b for _, b in tboxes],
+                                          lambda m: None)
+    log("   %d classified elements across %d town boxes"
+        % (len(assets), len(tboxes)))
+    for name, b in tboxes:
+        if len(assets):
+            env = shp_box(b[0], b[1], b[2], b[3])
+            sub = assets[assets.geometry.intersects(env)]
+        else:
+            sub = assets
+        c = count_classes(sub)
         for k, v in c.items():
             urban_counts[k] += v
             if v:
                 urban_boxes_with[k] += 1
-        log("   %-12s %5d classified elements" % (name, len(assets)))
+        log("   %-12s %5d classified elements" % (name, len(sub)))
 
     # ---------------- rural ----------------
     # Read from the screen's own per-cluster cache: the rural counts must be
