@@ -116,7 +116,9 @@ from national_phaseb import (BEARING_PRIMARY, SATURATION_STOP,  # noqa: E402
                              frontage_definitions)
 from replacement_cost import (IE_ROCK_ARMOUR_EUR_PER_M,  # noqa: E402
                               replacement_cost)
-from wide_receptor_screen import FETCH_EXCLUSION_MAX, ITM, WGS  # noqa: E402
+from wide_receptor_screen import (FETCH_EXCLUSION_MAX,  # noqa: E402
+                                  FETCH_RASTER, ITM, WGS,
+                                  FetchSampler)
 
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src"
@@ -214,7 +216,9 @@ def ensure_wave_directions(need: pd.DataFrame, wave: pd.DataFrame) -> pd.DataFra
 # ======================================================================
 
 def analyse_site_e1_full(row, wave_from: float, wave_to: float,
-                         radius_m: float = 2000.0) -> dict:
+                         radius_m: float = 2000.0,
+                         lattice_half_m: float | None = None,
+                         depth_tag: str | None = None) -> dict:
     """The FULL Sherkin chain at an E1 survey-record site.
 
     `national_phaseb.analyse_site_e1` deliberately stops at the bearing test,
@@ -250,6 +254,8 @@ def analyse_site_e1_full(row, wave_from: float, wave_to: float,
     if lam is None or not len(lam):
         res["status"] = "no_npws_laminaria_polygon"
         return res
+    if lattice_half_m is not None:
+        half = float(lattice_half_m)
     xs, ys = itm_grid_axes(cx, cy, half, GRID_M)
     mask = rasterise(lam.geometry.values, xs, ys)
     XX, YY = np.meshgrid(xs, ys)
@@ -260,7 +266,7 @@ def analyse_site_e1_full(row, wave_from: float, wave_to: float,
         res["status"] = "no_survey_cells_within_radius"
         return res
 
-    depth = sample_infomar(xs, ys, mask, "e1full_c%d" % cl)
+    depth = sample_infomar(xs, ys, mask, depth_tag or ("e1full_c%d" % cl))
     d = depth[mask & np.isfinite(depth)]
     res["cells_with_depth"] = int(d.size)
     if d.size:
@@ -268,28 +274,65 @@ def analyse_site_e1_full(row, wave_from: float, wave_to: float,
                               "median": round(float(np.median(d)), 1),
                               "max": round(float(d.max()), 1),
                               "note": "INFOMAR, metres below LAT, positive down"}
-    in_band = mask & np.isfinite(depth) & (depth >= D_VALID[0]) & (depth <= D_VALID[1])
-    res["cells_in_depth_band"] = int(in_band.sum())
-    res["ha_in_depth_band"] = round(float(in_band.sum()) * CELL_HA, 2)
-    if not in_band.sum():
-        # Same two named sides as the E2/E3 path. Both stop the chain and
-        # neither is a data gap.
-        if d.size and float(np.median(d)) < D_VALID[0]:
+
+    # ---- fetch per lattice cell, exactly as anaird_phaseb does it ----
+    # 200 m sampling radius and `fetch_nearest_max`, both carried over
+    # unchanged. This is the cell-level fetch gate; the cluster-level gate is
+    # a different, coarser thing.
+    fs = FetchSampler(FETCH_RASTER)
+    try:
+        cell_fetch = np.full(mask.shape, np.nan)
+        for r_, c_ in np.argwhere(mask):
+            cell_fetch[r_, c_] = fs.sample(
+                float(xs[c_]), float(ys[r_]),
+                radius_m=200.0)["fetch_nearest_max"]
+    finally:
+        fs.close()
+
+    bear = (np.degrees(np.arctan2(XX - cx, YY - cy)) + 360.0) % 360.0
+
+    # ---- THE WALK IS UNFILTERED; THE SELECTION IS FILTERED ----
+    #
+    # This is the one place the reassembly got wrong, three times, and the
+    # An Aird control caught it every time. `per_axis_cell_table` follows contiguous runs
+    # of habitat and integrates each traversed cell's OWN k(D), so the walk
+    # must see the WHOLE habitat mask -- filtering the mask first breaks the
+    # runs and shortened An Aird's answer from 46.7 % to 21.9 %. The fetch
+    # and depth gates are then applied to the ROWS of the resulting table,
+    # which is what anaird_phaseb.py does at its line 947 onward.
+    cells = per_axis_cell_table(mask, depth)
+    if cells.empty:
+        res["status"] = "no_cell_with_depth_in_bed"
+        return res
+    cells["fetch"] = cell_fetch[cells.row.values, cells.col.values]
+    cells["bearing_deg"] = bear[cells.row.values, cells.col.values].round(1)
+    cells["in_valid_depth"] = ((cells.depth_m >= D_VALID[0])
+                               & (cells.depth_m <= D_VALID[1])).astype(int)
+    cells["pass_fetch"] = (cells.fetch > FETCH_EXCLUSION_MAX).astype(int)
+    res["funnel"] = {
+        "habitat_cells_with_depth": int(len(cells)),
+        "and_fetch_over_gate": int((cells.pass_fetch == 1).sum()),
+        "and_depth_4_10m": int(((cells.pass_fetch == 1)
+                                & (cells.in_valid_depth == 1)).sum())}
+    res["funnel"]["ha_final"] = round(
+        res["funnel"]["and_depth_4_10m"] * CELL_HA, 2)
+
+    bed = cells[(cells.pass_fetch == 1) & (cells.in_valid_depth == 1)]
+    res["cells_selected"] = int(len(bed))
+    if bed.empty:
+        dd = cells.loc[cells.pass_fetch == 1, "depth_m"]
+        if len(dd) and float(dd.median()) < D_VALID[0]:
             res["status"] = "bed_too_shallow_for_coefficient"
-        elif d.size and float(np.median(d)) > D_VALID[1]:
+        elif len(dd) and float(dd.median()) > D_VALID[1]:
             res["status"] = "bed_too_deep_for_coefficient"
         else:
             res["status"] = "no_bed_in_dubi_torum_depth_range"
         return res
 
-    cells = per_axis_cell_table(in_band, depth)
-    if cells.empty:
-        res["status"] = "no_cell_with_depth_in_bed"
-        return res
-    head = headline(cells, wave_to)
+    head = headline(bed, wave_to)
     res["attenuation"] = head
     axis = head["bracketing_axes"][1] if head["weight_on_upper"] >= 0.5         else head["bracketing_axes"][0]
-    sat = saturation_check(cells, axis)
+    sat = saturation_check(bed, axis)
     res["saturation"] = {
         "axis_checked": axis,
         "traversed_width_median_m": round(float(sat.width_m.median()), 1),
@@ -301,10 +344,11 @@ def analyse_site_e1_full(row, wave_from: float, wave_to: float,
     res["out_of_domain"] = bool(sat.ratio_width_to_50pct.median() > SATURATION_STOP)
     res["status"] = "out_of_domain" if res["out_of_domain"] else "in_domain"
 
-    bear = (np.degrees(np.arctan2(XX - cx, YY - cy)) + 360.0) % 360.0
-    on_path = _ang_diff(bear, wave_from) <= BEARING_PRIMARY
-    res["bed_on_wave_path"] = bool((in_band & on_path).sum() > 0)
-    res["ha_on_wave_path"] = round(float((in_band & on_path).sum()) * CELL_HA, 2)
+    on_path = bed[_ang_diff(bed.bearing_deg.values, wave_from) <= BEARING_PRIMARY]
+    res["bed_on_wave_path"] = bool(len(on_path) > 0)
+    res["ha_on_wave_path"] = round(len(on_path) * CELL_HA, 2)
+    if len(on_path):
+        res["attenuation_on_wave_path"] = headline(on_path, wave_to)
     return res
 
 
@@ -511,6 +555,56 @@ def write_markdown_table(df: pd.DataFrame, results: list) -> None:
                                                  encoding="utf-8")
 
 
+def control_e1_full_chain() -> dict:
+    """Does the reassembled E1 chain reproduce the published An Aird result?
+
+    `analyse_site_e1_full` is new code assembled from imported pieces, and new
+    code that produces a percentage must be shown to reproduce one that is
+    already published before it is used anywhere else. An Aird (cluster 531)
+    is the only E1 site whose full chain has been run and written up
+    (NOTE_2026-08-28_anaird_phaseB.md): H 46.7 %, E 71.6 %, saturation ratio
+    1.26-1.43, OUT OF DOMAIN.
+
+    Run on An Aird's own lattice (half-width 6 000 m) and its own INFOMAR
+    depth cache tag, so it costs no network and compares like with like. It
+    uses the SAME code path a real site gets -- no special-casing -- so a pass
+    means the production path is the published method.
+    """
+    expected = {"H_pct": 46.7, "E_pct": 71.6, "out_of_domain": True}
+    try:
+        expo = pd.read_csv(EXPO / "national_exposure_screen.csv")
+        r = expo[expo.cluster == 531]
+        if r.empty:
+            return {"ran": False, "reason": "cluster 531 not in the screen"}
+        r = r.iloc[0]
+        w = load_wave_table()
+        w = w[(w.cluster == 531) & (w.status.astype(str) == "ok")]
+        if w.empty:
+            return {"ran": False, "reason": "no measured wave direction for 531"}
+        w = w.iloc[0]
+        got = analyse_site_e1_full(r, float(w.wave_from_deg),
+                                   float(w.wave_to_deg),
+                                   lattice_half_m=6000.0,
+                                   depth_tag="anaird_6000m")
+    except Exception as exc:                                  # noqa: BLE001
+        return {"ran": False, "reason": "chain raised: %s" % exc}
+    att = got.get("attenuation")
+    if not att:
+        return {"ran": True, "passed": False, "expected": expected,
+                "got_status": got.get("status"),
+                "reason": "no attenuation produced"}
+    gh = round(att["H_reduction"] * 100, 1)
+    ge = round(att["E_reduction"] * 100, 1)
+    ratio = (got.get("saturation") or {}).get("ratio_median")
+    ok = (abs(gh - expected["H_pct"]) <= 0.15
+          and abs(ge - expected["E_pct"]) <= 0.15
+          and bool(got.get("out_of_domain")) == expected["out_of_domain"])
+    return {"ran": True, "passed": bool(ok), "expected": expected,
+            "got": {"H_pct": gh, "E_pct": ge,
+                    "out_of_domain": bool(got.get("out_of_domain")),
+                    "saturation_ratio_median": ratio}}
+
+
 # ======================================================================
 # main
 # ======================================================================
@@ -541,6 +635,24 @@ def main() -> int:
         print("   !! DOES NOT REPRODUCE -- aborting.")
         return 3
     print("   PASSED.")
+
+    # ---- guard: the reassembled E1 chain must reproduce An Aird ----
+    hr("GUARD -- reassembled E1 chain vs the published An Aird result")
+    e1c = control_e1_full_chain()
+    if not e1c.get("ran"):
+        print("   NOT RUN: %s" % e1c.get("reason"))
+        print("   analyse_site_e1_full() is therefore UNVALIDATED. It is "
+              "only invoked at an E1 site that both flags and has a mapped "
+              "coastal protection structure; if that happens, its output "
+              "must be treated as unverified.")
+    elif e1c["passed"]:
+        print("   PASSED  expected %s, got %s" % (e1c["expected"], e1c["got"]))
+    else:
+        print("   >>> FAILED  expected %s, got %s"
+              % (e1c["expected"], e1c.get("got", e1c.get("got_status"))))
+        print("   The reassembled chain does not reproduce the published "
+              "An Aird figures. Any E1 full-chain output below is not to be "
+              "believed.")
 
     # ---- guard: no avoided-damage method may have quietly become available
     hr("GUARD -- damage-function applicability")
@@ -852,6 +964,7 @@ def main() -> int:
     summ = {
         "run_utc": t0.isoformat(timespec="seconds"),
         "sherkin_guard": sh,
+        "e1_full_chain_control": e1c,
         "damage_function_check": dfc,
         "rules": {
             "R1": "no exposed receptor of any class -> EUR 0 evidenced zero",
