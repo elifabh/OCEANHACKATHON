@@ -146,6 +146,14 @@ def fetch_osm_buildings(bbox: tuple[float, float, float, float],
             )
             r.raise_for_status()
             payload = r.json()
+            # 2026-08-28 (session 2): this module keeps its OWN Overpass door
+            # -- primary only, no mirrors, no cache -- so it was never exposed
+            # to the Switzerland-only mirror. A second door with none of the
+            # guards is still a second door, so the instance fingerprint check
+            # is applied here too. Import is local: this is a closed 11-Aug
+            # script and nothing else about it is being changed.
+            from wide_receptor_screen import check_instance
+            check_instance(payload, OVERPASS_URL)
             break
         except Exception as exc:                       # noqa: BLE001
             if attempt == retries:

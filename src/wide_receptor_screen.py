@@ -63,6 +63,7 @@ CONTROL
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -134,60 +135,94 @@ HAB_SEARCH_M = 1000.0    # habitat must be within this of the cluster centroid
 FETCH_EXCLUSION_MAX = 3.73   # inner_roaringwater maximum (mizen screen)
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# Mirrors, tried in order when the primary returns 429/504. Added
-# 2026-08-27 for the national run: the primary was returning gateway
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+# Mirrors are tried in order when the primary returns 429/504. They were added
+# 2026-08-27 for the national run, because the primary was returning gateway
 # timeouts and 93 queries against one degraded instance is not viable.
 #
-# 2026-08-28, CORRECTION -- the claim that used to stand here, that "every
-# mirror serves the same OSM database ... so which mirror answered cannot
-# change a result", IS FALSE and was never tested.
+# 2026-08-28, CORRECTION. The claim that used to stand in this comment --
+# "every mirror serves the same OSM database ... so which mirror answered
+# cannot change a result" -- IS FALSE, was never tested, and cost this project
+# >=109 buildings across 9 clusters in a published table. It is deleted rather
+# than left standing beside its own correction.
 #
 #   overpass.osm.ch serves a SWITZERLAND-ONLY database. It answers HTTP 200
 #   with an empty element list for any Irish query -- no error, no `remark`,
-#   nothing a status check would catch. Measured 2026-08-28 with an
-#   `out count;` query on identical bboxes:
+#   nothing a status check would catch.
 #
 #       area              primary          osm.ch
 #       Bern, CH          (primary 5xx)    10 298 buildings
 #       Galway city, IE    4 837                 0
-#       Cork city, IE     22 294                 0
+#       Cork city, IE     22 315                 0   (re-measured 2026-08-28)
 #
 #   It was found because a coastline query over a LARGER bbox returned FEWER
 #   ways than the same query over a smaller one -- impossible for a correct
 #   endpoint, and only visible because both were compared.
 #
-# It is REMOVED, not demoted: a mirror that answers confidently and wrongly
-# is far worse than one that fails, because the wrong answer gets cached and
-# every later run reproduces it. maps.mail.ru was re-tested at the same time
-# and returns the correct 22 294, so it stays.
+# It is BANNED, not merely removed: see OVERPASS_BANNED below. An endpoint
+# that answers confidently and wrongly is worse than one that fails, because
+# the wrong answer is cached and every later run reproduces it.
 OVERPASS_MIRRORS = (
     "https://overpass-api.de/api/interpreter",
+    # Added 2026-08-28 (session 2) ONLY after passing mirror_coverage_selftest:
+    # Cork bbox 22 315 buildings, identical to the primary, ISO timestamp_osm_base,
+    # 1.0 s. The rule is: a mirror is not a mirror until it has been shown to
+    # hold the data.
+    "https://overpass.openstreetmap.fr/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 )
-# Removed 2026-08-28: "https://overpass.osm.ch/api/interpreter"
-# Switzerland-only database, returns HTTP 200 + zero elements outside it.
-# See overpass_audit.py for the cache clean-up this made necessary.
-OVERPASS_REMOVED = {
-    "https://overpass.osm.ch/api/interpreter":
-        "Switzerland-only database; HTTP 200 with 0 elements for Irish "
-        "queries (verified 2026-08-28)",
-}
-# overpass.private.coffee was tried on 2026-08-27 and returned HTTP 500 to
-# every request, including queries the primary answered in 2 s. Dropped: a
-# mirror that always fails only burns retry attempts.
+
+# ---------------------------------------------------------------------------
+# BANNED endpoints -- permanent, and enforced on the RESPONSE as well as the URL
+# ---------------------------------------------------------------------------
+# Removing a URL from a list is not enough. The same instance can be reached
+# again through a copy-paste, a CDN alias, a DNS change, or a third-party
+# mirror that proxies it. So every response is also checked against the
+# instance fingerprints below and refused if it matches, wherever it came from.
 #
-# 2026-08-28, national Phase B: the primary began returning 429 under the
-# per-site frontage queries and kumi.systems returned HTTP 500 to every
-# request (22 s each, so it was burning two of every twelve attempts). Two
-# further public instances were probed and answer the same query in under
-# 2.5 s: overpass.osm.ch and maps.mail.ru/osm/tools/overpass. They are placed
-# ahead of kumi, which is kept last rather than dropped because it has served
-# this project before and may recover. Networking only: every mirror serves
-# the same OSM database and every response is cached by query hash, so which
-# mirror answered still cannot change a result.
-# Probed 2026-08-28: overpass.osm.jp = SSL failure,
-# overpass.openstreetmap.ru = connect timeout. Neither added.
+# osm.ch's fingerprint, measured 2026-08-28 12:23 UTC:
+#     generator          "Overpass API 0.7.59.1 2a9d9642"
+#     timestamp_osm_base "116725"   <- a bare INTEGER
+# Every legitimate Overpass instance returns an ISO-8601 timestamp_osm_base
+# ("2026-08-28T12:23:51Z"). A non-ISO value is by itself grounds to refuse a
+# response, because it means the instance is not serving the planet database
+# this project's provenance statements assume.
+OVERPASS_BANNED = {
+    "https://overpass.osm.ch/api/interpreter": {
+        "banned": "2026-08-28",
+        "why": ("Switzerland-only database. Answers Irish queries with "
+                "HTTP 200, no remark, and zero elements. Verified twice: "
+                "2026-08-28 (Cork 0 vs 22 294) and re-verified 2026-08-28 "
+                "12:23 UTC (Cork 0 vs 22 315)."),
+        "generator": "Overpass API 0.7.59.1 2a9d9642",
+        "timestamp_osm_base_form": "integer sequence number, not ISO-8601",
+        "cost": ("21 poisoned cache entries; >=109 buildings unseen across "
+                 "9 clusters in the published 2026-08-28 national table; "
+                 "8 clusters screened against no buildings at all."),
+    },
+}
+# Generator strings that identify a banned instance no matter which URL served
+# them. Matched as a prefix so a patch-level bump does not silently unban it.
+BANNED_GENERATOR_PREFIXES = tuple(
+    sorted({v["generator"] for v in OVERPASS_BANNED.values() if v.get("generator")})
+)
+# Kept as the old name so existing callers (overpass_audit.py) keep working.
+OVERPASS_REMOVED = {u: v["why"] for u, v in OVERPASS_BANNED.items()}
+
+# Endpoint history, so a later session does not re-probe what was already
+# probed. Failing endpoints are safe -- they cost retries, not correctness.
+#   2026-08-27  overpass.private.coffee   HTTP 500 to every request. Dropped.
+#   2026-08-28  overpass.osm.jp           SSL failure. Not added.
+#   2026-08-28  overpass.openstreetmap.ru connect timeout. Not added.
+#   2026-08-28  maps.mail.ru              504 today; kept, it fails loudly.
+#   2026-08-28  overpass.kumi.systems     500 today; kept, it fails loudly.
+#   2026-08-28  overpass.private.coffee   re-probed, HTTP 500. Still out.
+#   2026-08-28  overpass.osm.rambler.ru / nchc.org.tw / osm.vlaanderen /
+#               overpass.us               DNS or 404. Not added.
 UA = "OceanHackathonCork2026/kelp-prototype (elif, MTU)"
 ITM = "EPSG:2157"
 BNG = "EPSG:27700"
@@ -209,6 +244,87 @@ UNCONFIRMED_EMPTY_KEY = "_unconfirmed_empty"
 _EMPTY_STATS = {"confirmed": 0, "overturned": 0, "unconfirmed": 0}
 
 
+_ISO_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+
+class BannedInstanceError(RuntimeError):
+    """A response carries the fingerprint of an instance this project has
+    banned. Raised no matter which URL served it, because a URL can be
+    aliased and a fingerprint cannot."""
+
+
+def instance_fingerprint(payload: dict) -> dict:
+    """The identity an Overpass response carries about the server that made
+    it. `timestamp_osm_base` is the more useful half: a legitimate instance
+    reports the ISO-8601 time of the database it is serving, so a non-ISO
+    value means the instance is not serving the planet database at all."""
+    ts = str((payload.get("osm3s") or {}).get("timestamp_osm_base") or "")
+    return {
+        "generator": str(payload.get("generator") or ""),
+        "timestamp_osm_base": ts,
+        "timestamp_is_iso": bool(_ISO_TS.match(ts)),
+    }
+
+
+def check_instance(payload: dict, url: str = "") -> dict:
+    """Refuse a response from a banned instance. Two independent tests, so
+    neither has to be right on its own:
+
+      1. the generator string matches a banned instance's;
+      2. timestamp_osm_base is not an ISO-8601 timestamp.
+
+    Test 2 is the one that generalises. It would have caught osm.ch on the
+    day it was added without anyone knowing that osm.ch existed, and it will
+    catch the next instance of the same class without a code change.
+    """
+    fp = instance_fingerprint(payload)
+    gen = fp["generator"]
+    for bad in BANNED_GENERATOR_PREFIXES:
+        if gen.startswith(bad):
+            raise BannedInstanceError(
+                "response from a BANNED instance (generator %r) via %s -- "
+                "refused. See OVERPASS_BANNED." % (gen, url or "?"))
+    if fp["timestamp_osm_base"] and not fp["timestamp_is_iso"]:
+        raise BannedInstanceError(
+            "response carries a non-ISO timestamp_osm_base (%r) from %s -- "
+            "this instance is not serving the planet database. Refused."
+            % (fp["timestamp_osm_base"], url or "?"))
+    return fp
+
+
+def _count_total(payload: dict):
+    """The total from an `out count;` response, or None if this is not one.
+
+    THE HOLE THIS CLOSES (found 2026-08-28, session 2). Asked an `out count;`
+    query, osm.ch returns ONE element carrying total="0". That is a NON-EMPTY
+    response whose content is a zero, so:
+      * the 2026-08-28 cache audit, which treated only zero-element entries as
+        suspect, would not have looked at it; and
+      * the empty-confirmation below would not have fired, because
+        payload["elements"] is truthy.
+    A count of zero is exactly the kind of claim about the world that this
+    project publishes, so it is confirmed like any other empty.
+    No such entry is in the cache -- the only out-count query this repo issues
+    is the self-test, which is not cached -- so this is a hole being closed
+    before it is fallen into, not one being repaired.
+    """
+    els = payload.get("elements") or []
+    if len(els) == 1 and els[0].get("type") == "count":
+        try:
+            return int((els[0].get("tags") or {}).get("total", 0))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _is_empty_claim(payload: dict) -> bool:
+    """Does this response claim there is nothing there? Covers both the
+    zero-element form and the out-count-of-zero form."""
+    if not payload.get("elements"):
+        return True
+    return _count_total(payload) == 0
+
+
 def _overpass_post(url: str, query: str, timeout: int = 300) -> dict:
     r = requests.post(url, data={"data": query},
                       headers={"User-Agent": UA}, timeout=timeout)
@@ -222,6 +338,10 @@ def _overpass_post(url: str, query: str, timeout: int = 300) -> dict:
     rem = str(payload.get("remark") or "")
     if rem and ("error" in rem.lower() or "timed out" in rem.lower()):
         raise RuntimeError(f"Overpass remark from {url}: {rem[:120]}")
+    # Refuse a banned instance wherever it was reached from. This runs before
+    # the caller ever sees the payload, so a banned response can neither be
+    # returned nor cached nor used to confirm an empty.
+    check_instance(payload, url)
     return payload
 
 
@@ -248,6 +368,40 @@ def _confirm_empty(query: str, exclude: str) -> dict | None:
     return None
 
 
+def query_key(query: str) -> str:
+    """The cache key for a query. Public so the audit can map a cache file
+    back to the query that produced it without re-implementing the hash."""
+    import hashlib
+    return hashlib.sha1(query.encode()).hexdigest()[:12]
+
+
+def _write_sidecar(key: str, query: str, url: str, payload: dict) -> None:
+    """Record WHAT WAS ASKED and WHO ANSWERED, beside the response.
+
+    Added 2026-08-28 (session 2). The cache stored the response and nothing
+    else, so a poisoned entry could not be re-issued from the file alone --
+    the first audit had to reconstruct query strings by re-running the callers
+    and re-hashing, and could only do that for the callers somebody thought to
+    rebuild. A response with no record of the question it answers or the
+    server that answered it cannot be audited; that is a property of the
+    cache, not of the bug, and it is fixed here rather than worked around
+    again.
+    """
+    meta = {
+        "key": key,
+        "query": query,
+        "endpoint": url,
+        "fetched_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "n_elements": len(payload.get("elements") or []),
+        "count_total": _count_total(payload),
+        **instance_fingerprint(payload),
+    }
+    tmp = OSM_CACHE / f"overpass_{key}.meta.json.tmp"
+    tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    tmp.replace(OSM_CACHE / f"overpass_{key}.meta.json")
+
+
 def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
     """POST to Overpass; cache the raw JSON under data/osm/ keyed by query hash
     so a re-run (e.g. after a parameter change) does not re-download ~90k
@@ -256,19 +410,30 @@ def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
     An EMPTY response is confirmed on a second endpoint before it is returned
     or cached (2026-08-28). An unconfirmable empty is returned marked and is
     NOT written to the cache, so a later run re-asks rather than inheriting a
-    silence nobody checked.
+    silence nobody checked. "Empty" includes an `out count;` answering zero,
+    which is a non-empty response carrying an empty claim (2026-08-28 s2).
+
+    Every write also lays down a `.meta.json` sidecar with the query text, the
+    endpoint that answered and its fingerprint.
     """
-    import hashlib
     OSM_CACHE.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha1(query.encode()).hexdigest()[:12]
+    key = query_key(query)
     cached = OSM_CACHE / f"overpass_{key}.json"
     if cached.exists():
         return json.loads(cached.read_text(encoding="utf-8"))
+    # A banned instance must not be reachable through the mirror list either.
+    # Cheap, and it turns "someone pasted the URL back" from a silent data
+    # error into an immediate, loud one.
+    for _u in OVERPASS_MIRRORS:
+        if _u in OVERPASS_BANNED:
+            raise BannedInstanceError(
+                "%s is in OVERPASS_MIRRORS but is BANNED: %s"
+                % (_u, OVERPASS_BANNED[_u]["why"]))
     for attempt in range(1, retries + 1):
         url = OVERPASS_MIRRORS[(attempt - 1) % len(OVERPASS_MIRRORS)]
         try:
             payload = _overpass_post(url, query)
-            if confirm_empty and not payload.get("elements"):
+            if confirm_empty and _is_empty_claim(payload):
                 alt = _confirm_empty(query, exclude=url)
                 if alt is None:
                     _EMPTY_STATS["unconfirmed"] += 1
@@ -278,15 +443,19 @@ def overpass(query: str, retries: int = 12, confirm_empty: bool = True) -> dict:
                     payload = dict(payload)
                     payload[UNCONFIRMED_EMPTY_KEY] = True
                     return payload
-                if alt.get("elements"):
+                if not _is_empty_claim(alt):
                     _EMPTY_STATS["overturned"] += 1
                     print("   Overpass EMPTY from %s OVERTURNED by a second "
                           "endpoint (%d elements). Using the non-empty answer."
-                          % (url, len(alt["elements"])), file=sys.stderr)
+                          % (url, len(alt.get("elements") or [])),
+                          file=sys.stderr)
                     payload = alt
                 else:
                     _EMPTY_STATS["confirmed"] += 1
-            cached.write_text(json.dumps(payload), encoding="utf-8")
+            tmp = OSM_CACHE / f"overpass_{key}.json.tmp"
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            tmp.replace(cached)          # atomic: never a half-written cache
+            _write_sidecar(key, query, url, payload)
             return payload
         except Exception as exc:                        # noqa: BLE001
             if attempt == retries:
@@ -312,21 +481,42 @@ def mirror_coverage_selftest(verbose: bool = True) -> dict:
     Cork city bbox; a mirror that answers 0 where the primary answers tens of
     thousands is serving a different database, not the same one.
     """
-    bb = "51.88,-8.50,51.91,-8.46"
-    q = '[out:json][timeout:180];(way["building"](%s););out count;' % bb
+    areas = {"cork": "51.88,-8.50,51.91,-8.46",
+             "galway": "53.26,-9.07,53.29,-9.03"}
     out = {}
-    for url in OVERPASS_MIRRORS:
+    for url in list(OVERPASS_MIRRORS) + list(OVERPASS_BANNED):
+        rec = {"banned": url in OVERPASS_BANNED}
         try:
-            p = _overpass_post(url, q, timeout=120)
-            els = p.get("elements") or []
-            n = int((els[0].get("tags") or {}).get("total", 0)) if els else 0
-            out[url] = {"reachable": True, "cork_buildings": n,
-                        "holds_irish_data": n > 1000}
+            counts, fp = {}, None
+            for name, bb in areas.items():
+                q = ('[out:json][timeout:180];(way["building"](%s););'
+                     'out count;' % bb)
+                # NOT via _overpass_post: that refuses a banned instance, and
+                # this test has to be able to MEASURE one.
+                r = requests.post(url, data={"data": q},
+                                  headers={"User-Agent": UA}, timeout=120)
+                r.raise_for_status()
+                p = r.json()
+                els = p.get("elements") or []
+                counts[name] = (int((els[0].get("tags") or {}).get("total", 0))
+                                if els else 0)
+                fp = instance_fingerprint(p)
+            rec.update({"reachable": True, "counts": counts, **(fp or {})})
+            # Two conditions, both required. A mirror must hold Irish data in
+            # more than one place, and must report an ISO database timestamp.
+            rec["holds_irish_data"] = (all(v > 1000 for v in counts.values())
+                                       and bool(fp and fp["timestamp_is_iso"]))
         except Exception as exc:                        # noqa: BLE001
-            out[url] = {"reachable": False, "error": str(exc)[:120],
-                        "holds_irish_data": None}
+            rec.update({"reachable": False, "error": str(exc)[:120],
+                        "holds_irish_data": None})
+        out[url] = rec
         if verbose:
-            print("   %-58s %s" % (url, out[url]))
+            print("   %-58s %s" % (url, rec))
+    bad = [u for u, r in out.items()
+           if u not in OVERPASS_BANNED and r.get("holds_irish_data") is False]
+    if bad:
+        raise BannedInstanceError(
+            "mirror(s) in OVERPASS_MIRRORS do NOT hold Irish data: %s" % bad)
     return out
 
 
