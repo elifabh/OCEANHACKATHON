@@ -53,6 +53,20 @@ ROOTS = [
     "requests",
     "earthengine-api",
     "pandas",
+    # Added 2026-08-28, national finish-out. Same class of gap as the
+    # scikit-learn one below and found the same way - by walking every
+    # import in src/ against this file rather than trusting the root set.
+    #   pillow            src/ortho_check.py draws the footprint, crosshair
+    #                     and scale bar on every orthophoto chip
+    #   xarray            src/swell_direction.py reads the CMEMS NetCDF
+    #   copernicusmarine  src/swell_direction.py --download,
+    #                     src/site_wave_climate.py
+    # xarray and copernicusmarine have been in use since 2026-08-10, when
+    # they produced the LOCKED Sherkin swell axis behind 7.9 % / 15.2 %.
+    # Eighteen days undeclared in a mandatory document.
+    "pillow",
+    "xarray",
+    "copernicusmarine",
     # Added 2026-08-27. scikit-learn has been imported by the receptor screens
     # since 2026-08-11 (sklearn.cluster.DBSCAN clusters shore-proximate
     # buildings into settlements) but was never in this root set, so it was
