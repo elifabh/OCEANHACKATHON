@@ -5,3 +5,4 @@ GONDERILEN_DOKUMANLAR/
 __pycache__/
 *.pyc
 .env
+docs/
