@@ -1,782 +1,140 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Invisible Shield — Roaringwater Bay kelp demonstrator</title>
-<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<style>
-  :root {
-    --accent:       #0e615b;   /* teal — fisheries frame + UI accent      */
-    --accent-soft:  #e3f0ef;
-    --coastal:      #44546b;   /* slate — coastal-protection frame        */
-    --coastal-soft: #eaedf2;
-    --eco-border:   #b9b9b2;   /* neutral — ecological box, non-monetary  */
-    --ink:          #1c1c1a;
-    --ink-2:        #52514e;
-    --ink-3:        #898781;
-    --paper:        #fcfcfb;
-    --paper-2:      #f4f4f1;
-    --hairline:     #e1e0d9;
-    --bed-stroke:   #7c2d12;   /* amber family — the 1.75 ha bed          */
-    --bed-fill:     #f59e0b;
-    --nutrient:     #7a5c1e;   /* ochre — nutrient frame, its own colour  */
-    --transfer:     #5a4a6b;   /* aubergine — the France transfer test    */
-    --restore:      #1d6fa5;   /* blue — restoration candidates           */
-    --exposure-lo:  #f2e6c9;   /* exposure ramp, deliberately unlike the  */
-    --exposure-hi:  #8c3a2b;   /* teal/amber/violet already in use        */
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body {
-    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: var(--ink); background: var(--paper);
-  }
-  #app { display: flex; height: 100%; }
-  #map { flex: 1; min-width: 0; background: #dfe8ea; }
-
-  /* ---------- sidebar ---------- */
-  #panel {
-    width: 400px; flex: none; overflow-y: auto;
-    border-right: 1px solid var(--hairline);
-    padding: 22px 20px 28px;
-  }
-  #panel h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
-  #panel .subtitle { color: var(--ink-2); font-size: 12.5px; margin: 4px 0 2px; }
-  #panel .buildstamp { color: var(--ink-3); font-size: 11px; }
-  section { margin-top: 22px; }
-  section > h2 {
-    font-size: 11px; font-weight: 650; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 10px;
-  }
-
-  /* layer list */
-  .layer { margin-bottom: 11px; }
-  .layer label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
-  .layer input { accent-color: var(--accent); transform: translateY(1px); }
-  .layer .name { font-weight: 550; font-size: 13.5px; }
-  .layer .swatch {
-    display: inline-block; width: 10px; height: 10px; border-radius: 2px;
-    margin-right: 2px; transform: translateY(1px);
-  }
-  .layer .caption {
-    margin: 2px 0 0 26px; font-size: 11px; color: var(--ink-3); line-height: 1.45;
-  }
-  .layer.disabled label { cursor: not-allowed; }
-  .layer.disabled .name { color: var(--ink-3); font-weight: 500; }
-
-  /* valuation frames */
-  .frame {
-    border: 1px solid var(--hairline); border-left: 4px solid var(--accent);
-    border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;
-    background: var(--paper);
-  }
-  .frame.coastal { border-left-color: var(--coastal); }
-  .frame.nutrient { border-left-color: var(--nutrient); }
-  .frame h3 { font-size: 13px; font-weight: 650; margin-bottom: 8px; }
-  .frame.fisheries h3 { color: var(--accent); }
-  .frame.coastal h3 { color: var(--coastal); }
-  .frame.nutrient h3 { color: var(--nutrient); }
-  .frame .band { font-weight: 650; font-size: 15px; }
-
-  /* transfer test — a DIFFERENT SITE. Set apart so its euro can never be
-     misread as an Irish one: own colour, own border style, own site name
-     repeated in the heading and in the fine print. */
-  .transfer {
-    border: 2px solid var(--transfer); border-radius: 6px;
-    padding: 12px 14px; margin-top: 20px; background: #f8f6fa;
-  }
-  .transfer h3 { font-size: 13px; font-weight: 650; color: var(--transfer); }
-  .transfer .where {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--transfer); margin-bottom: 6px; font-weight: 650;
-  }
-  .transfer .row .amount { color: var(--transfer); }
-  .transfer table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  .transfer th, .transfer td {
-    font-size: 11px; text-align: right; padding: 3px 4px;
-    border-bottom: 1px solid #e6e0ec;
-  }
-  .transfer th:first-child, .transfer td:first-child { text-align: left; }
-  .transfer th { color: var(--ink-3); font-weight: 600; }
-
-  /* exposure legend */
-  .ramp { display: flex; height: 10px; border-radius: 2px; overflow: hidden;
-          margin: 6px 0 3px; }
-  .ramp span { flex: 1; }
-  .ramp-labels { display: flex; justify-content: space-between;
-                 font-size: 10px; color: var(--ink-3); }
-  .row { display: flex; justify-content: space-between; gap: 10px; margin: 7px 0; }
-  .row .what { font-size: 13px; }
-  .row .amount { font-weight: 650; font-size: 13.5px; white-space: nowrap; }
-  .row.subtotal { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 10px; }
-  .fineprint { font-size: 11px; color: var(--ink-3); line-height: 1.45; margin-top: 3px; }
-  .frame .fineprint + .row { margin-top: 10px; }
-
-  /* ecological box — deliberately outside and unlike the price frames */
-  .ecobox {
-    border: 1px dashed var(--eco-border); border-radius: 6px;
-    background: var(--paper-2); padding: 12px 14px; margin-top: 20px;
-  }
-  .ecobox h3 { font-size: 13px; font-weight: 650; color: var(--ink-2); }
-  .ecobox .tag {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--ink-3); margin-bottom: 8px;
-  }
-  .ecobox .big { font-size: 17px; font-weight: 650; color: var(--ink); }
-  .ecobox p { font-size: 12px; margin-top: 6px; }
-  details { margin-top: 6px; }
-  summary { font-size: 11px; color: var(--ink-2); cursor: pointer; }
-  details li { font-size: 11px; color: var(--ink-2); margin: 4px 0 0 16px; }
-
-  /* scenario */
-  .scenario { border: 1px solid var(--hairline); border-radius: 6px;
-              padding: 12px 14px; background: var(--paper); }
-  .scenario h3 { font-size: 13px; font-weight: 650; }
-  .scenario .disclaimer {
-    display: inline-block; font-size: 10px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--coastal); border: 1px solid var(--coastal);
-    border-radius: 3px; padding: 0 5px; margin-left: 6px; transform: translateY(-1px);
-  }
-  .scenario input[type=range] { width: 100%; accent-color: var(--accent); margin: 12px 0 4px; }
-  .scenario .readout { font-size: 13px; }
-  .scenario .readout b { font-size: 15px; }
-
-  footer { margin-top: 26px; border-top: 1px solid var(--hairline); padding-top: 12px; }
-  footer p { font-size: 10.5px; color: var(--ink-3); line-height: 1.5; margin-bottom: 7px; }
-
-  /* map furniture */
-  .legend {
-    background: rgba(252,252,251,0.94); border: 1px solid var(--hairline);
-    border-radius: 6px; padding: 9px 11px; font: 11px/1.4 system-ui, sans-serif;
-    color: var(--ink-2); box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-  }
-  .legend .bar {
-    height: 9px; width: 150px; border-radius: 2px; position: relative;
-    background: linear-gradient(to right, #96d5cf, #6bc0b8, #43a49c, #23837c, #0e615b);
-    margin: 5px 0 3px;
-  }
-  .legend .thresh {
-    position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink);
-    left: 71%;
-  }
-  .legend .scale-row { display: flex; justify-content: space-between; width: 150px;
-    position: relative; }
-  .legend .scale-row .t {
-    position: absolute; left: 71%; transform: translateX(-50%); color: var(--ink); }
-  .legend .bed-key { margin-top: 7px; }
-  .legend .bed-swatch {
-    display: inline-block; width: 11px; height: 11px; margin-right: 5px;
-    background: rgba(245,158,11,0.55); border: 2px solid #7c2d12;
-    transform: translateY(2px);
-  }
-  #offline-note {
-    position: absolute; z-index: 1000; left: 50%; transform: translateX(-50%);
-    bottom: 14px; background: rgba(28,28,26,0.85); color: #fff;
-    font-size: 11.5px; padding: 5px 12px; border-radius: 4px; display: none;
-  }
-  .leaflet-popup-content { font: 12px/1.5 system-ui, sans-serif; margin: 10px 12px; }
-  .leaflet-popup-content h4 { font-size: 12.5px; margin-bottom: 4px; }
-  .leaflet-popup-content table { border-collapse: collapse; margin-top: 4px; }
-  .leaflet-popup-content td, .leaflet-popup-content th {
-    padding: 1px 8px 1px 0; text-align: left; font-weight: normal;
-    font-variant-numeric: tabular-nums;
-  }
-  .leaflet-popup-content th { color: var(--ink-3); }
-  .popup-note { color: var(--ink-3); font-size: 11px; margin-top: 4px; }
-
-  @media (max-width: 760px) {
-    #app { flex-direction: column; }
-    #panel { width: 100%; height: 55%; border-right: none; border-bottom: 1px solid var(--hairline); }
-    #map { height: 45%; }
-  }
-</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="An evidence-led coastal habitat and protection prototype for West Cork.">
+<title>Invisible Shield — West Cork coastal habitats</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css"><link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div id="app">
-  <aside id="panel">
-    <h1>The Invisible Shield</h1>
-    <p class="subtitle">Valuing the kelp habitat of Roaringwater Bay, West Cork,
-      as natural infrastructure — prototype demonstrator, Ocean Hackathon Cork 2026.</p>
-    <p class="buildstamp">Built <span data-build></span> from the project evidence base.
-      Prototype: 48-hour-hackathon simplifications are labelled where they occur.</p>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
+<a href="#overview" class="brand" aria-label="Invisible Shield home"><span class="brand-symbol" aria-hidden="true">≈</span><span>INVISIBLE SHIELD<small>Ocean Hackathon Cork 2026</small></span></a>
+<nav aria-label="Main navigation"><a href="#explore">Explore</a><a href="#protection">Protection &amp; €</a><a href="#condition">Living habitat</a><a href="#methods">Evidence</a></nav>
+<span class="prototype">ORK02 · Working prototype</span>
+</header>
+<main id="main">
+<section id="overview" class="hero section">
+<div class="hero-copy"><p class="eyebrow">WEST CORK, IRELAND / 51.46° N</p>
+<h1>What does a kelp<br>forest protect?</h1>
+<p class="intro">Follow the evidence from underwater habitat to the shore. Explore what we can detect, what the model suggests, and what it would take to put a defensible value on protection.</p>
+<a class="button primary" href="#explore">Explore the Cork pilot <span aria-hidden="true">↘</span></a>
+<p class="quiet hero-disclosure">Prepared with AI assistance before 16–18 October 2026. Local validation remains part of the challenge.</p></div>
+<figure class="hero-image"><img src="sentinel-context.png" alt="Sentinel-2 view of Sherkin and Baltimore coastal water. Land is masked grey." width="900" height="600">
+<div class="image-label"><span>Roaringwater Bay</span><span>Sentinel-2 / 14 July 2022</span></div>
+<figcaption>Real satellite context · water-stretched RGB, land masked grey.<br>Contains modified Copernicus Sentinel data (2022).</figcaption></figure>
+</section>
+<section class="evidence-strip section" aria-label="Key evidence">
+<div><span class="micro">MODEL FOOTPRINT</span><strong id="summary-area">—</strong><p id="summary-groups"></p></div>
+<div><span class="micro">WITHIN HABITAT / MODEL</span><strong id="summary-wave">—</strong><p>Illustrative wave-height reduction</p></div>
+<div><span class="micro">WEST CORK RECORDS</span><strong id="summary-bio">—</strong><p>Reference taxa recorded, effort-biased</p></div>
+<div><span class="micro">ACTUAL AVOIDED DAMAGE</span><strong class="text-stat">Not quantified</strong><p>Conditional cost scenarios available below</p></div>
+</section>
 
-    <section>
-      <h2>Map layers</h2>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-suit" checked>
-          <span class="name"><span class="swatch" style="background:#43a49c"></span>
-            Subtidal habitat suitability (modelled)</span></label>
-        <p class="caption">Suitability model v2 (depth, slope, curvature, wave fetch;
-          leave-one-site-out AUC <span data-auc></span>). Trained on NPWS-mapped
-          <i>Laminaria</i> reef at five SW-coast SACs; shown only on mapped reef inside
-          the model's training range — <span data-ncells></span> of
-          <span data-ntotal></span> grid cells (50&nbsp;m) in this area qualify.</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-bed" checked>
-          <span class="name"><span class="swatch" style="background:rgba(245,158,11,.55);border:2px solid #7c2d12"></span>
-            Modelled kelp bed — 1.75&nbsp;ha</span></label>
-        <p class="caption">Seven 50&nbsp;m model cells off Sherkin Island passing the
-          depth and suitability gates. A model output (subtidal
-          <i>Laminaria hyperborea</i>), <b>not</b> a satellite detection or a survey.</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-inter" checked>
-          <span class="name"><span class="swatch" style="background:rgba(139,92,246,.55);border:1.5px solid #5b21b6"></span>
-            Intertidal macroalgae (Sentinel-2) — species-agnostic</span></label>
-        <p class="caption">Satellite detection: NDVI falls as the tide rises
-          (<span data-inter-scenes></span> cloud-free scenes,
-          May–Aug&nbsp;<span data-inter-year></span>,
-          <span data-inter-tide></span>&nbsp;m tide range). Species-agnostic —
-          NDVI cannot separate fucoids from kelps. A different product from the
-          subtidal model above; the two are never merged.
-          Extent <span data-inter-ha></span>&nbsp;ha here, <b>unvalidated</b>
-          against ground truth.</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-sites">
-          <span class="name"><span class="swatch" style="background:#334155;border-radius:50%"></span>
-            Dive survey sites (biodiversity)</span></label>
-        <p class="caption">OBIS/Seasearch dive records behind the biodiversity screen;
-          circle size = indicator taxa found at the site (of
-          <span data-indtotal></span>).</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-epa">
-          <span class="name"><span class="swatch" style="background:none;border:1.5px dashed #3f3f46"></span>
-            EPA waterbody status (WFD)</span></label>
-        <p class="caption">EPA Water Framework Directive coastal waterbodies
-          (CC&nbsp;BY&nbsp;4.0), reprojected from Irish Grid. Click a waterbody for its
-          cycle-by-cycle status.</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-restore">
-          <span class="name"><span class="swatch" style="background:rgba(29,111,165,.35);border:1.5px dashed #1d6fa5"></span>
-            Restoration candidates</span></label>
-        <p class="caption"><b data-rest-label></b>.
-          <span data-rest-n></span> cells (<span data-rest-ha></span>&nbsp;ha) here:
-          surveyed, another community recorded, yet the model says the conditions
-          suit <i>L.&nbsp;hyperborea</i>. <b>Read the false-positive rate first:</b>
-          <span data-rest-fpr></span> of the <span data-rest-fprn></span> surveyed
-          non-Laminaria cells score above threshold anyway, against a
-          <span data-rest-crit></span> acceptance criterion the model
-          <b>fails</b> — so roughly two in three of these are expected to be
-          model error. A further <span data-rest-r2></span> cells
-          (<span data-rest-r2ha></span>&nbsp;ha) are <i>survey</i> candidates in
-          unmapped areas elsewhere in Ireland, off this map: nobody has looked
-          there, and "we do not know" is not "it is not there". No euro is
-          attached to any of it.</p>
-      </div>
-      <div class="layer">
-        <label><input type="checkbox" id="ly-exposure">
-          <span class="name"><span class="swatch" style="background:linear-gradient(90deg,#f2e6c9,#8c3a2b);border-radius:50%"></span>
-            Coastal exposure index</span></label>
-        <p class="caption"><b data-exp-label></b>.
-          <span data-exp-n></span> shore points, InVEST's Coastal Vulnerability
-          method implemented directly (the package licenses cleanly, Apache-2.0,
-          but will not install: its <code>gdal==3.10.*</code> pin has no wheel
-          for this Python). Geometric mean of
-          <span data-exp-vars></span> ranked variables. Kelp within 2&nbsp;km
-          lowers a point's rank from 5.00 to 4.05 on InVEST's own habitat table,
-          which moves the index by a median of
-          <span data-exp-red></span> at the <span data-exp-hab></span> points
-          that have it. Ordinal only — compare points with each other, never
-          across runs.</p>
-        <div class="ramp"><span style="background:#f2e6c9"></span><span style="background:#e2c08d"></span><span style="background:#d19a6a"></span><span style="background:#b26a48"></span><span style="background:#8c3a2b"></span></div>
-        <div class="ramp-labels"><span>least exposed</span><span>most exposed</span></div>
-      </div>
-      <div class="layer disabled">
-        <label><input type="checkbox" disabled>
-          <span class="name">Coastal flood extents (OPW)</span></label>
-        <p class="caption">Withheld: the OPW flood-map licence is
-          CC&nbsp;BY-NC-ND&nbsp;4.0 and re-use clearance is pending
-          (flood_data@opw.ie). Nothing derived from that layer is shown.</p>
-      </div>
-    </section>
-
-    <section>
-      <h2>What is this habitat worth?</h2>
-
-      <div class="frame fisheries">
-        <h3>Fisheries support — annual</h3>
-        <div class="row"><span class="what">Velvet crab <i>(Necora puber)</i></span>
-          <span class="amount" data-crab></span></div>
-        <p class="fineprint">±1&nbsp;SD <span data-crab-range></span>. Landings value
-          × kelp-dependency 0.43 (Piñeiro-Corbeira et&nbsp;al. 2025). High confidence.</p>
-        <div class="row"><span class="what">European lobster <i>(Homarus gammarus)</i></span>
-          <span class="amount" data-lobster></span></div>
-        <p class="fineprint">GEAK low band — expert judgement with written justification;
-          the species is absent from the published dependency set.</p>
-        <div class="row subtotal"><span class="what">Fisheries subtotal</span>
-          <span class="amount" data-subtotal></span></div>
-        <p class="fineprint">The only subtotal on this panel. Values for different
-          service types are never summed — that would double-count.</p>
-      </div>
-
-      <div class="frame coastal">
-        <h3>Coastal protection — this frontage</h3>
-        <div class="row"><span class="what">Avoided damage</span>
-          <span class="amount" data-avoided></span></div>
-        <p class="fineprint">Checked, not assumed: <span data-avoided-reason></span>
-          (screen of buildings behind the modelled bed).</p>
-        <div class="row"><span class="what">Rock-armour replacement rate, Ireland</span>
-          <span class="amount" data-replacement></span></div>
-        <p class="fineprint">OPW-funded schemes, 2024–2026 (range <span data-replacement-range></span>).
-          Shown as a <b>counterfactual illustration — not a value</b>: replacement cost
-          requires demonstrated demand (Shabman &amp; Batie), and that test fails here.</p>
-        <div class="row"><span class="what">Modelled wave attenuation by the bed</span>
-          <span class="amount"><span data-att-h></span> height / <span data-att-e></span> energy</span></div>
-        <p class="fineprint">Field coefficients for subtidal <i>L.&nbsp;hyperborea</i> on
-          exposed Atlantic coasts (Dubi &amp; Tørum 1996; Mork 1996; Løvås &amp; Tørum
-          2001), applied along four wave axes. Physical effect, shown without a
-          euro figure.</p>
-      </div>
-
-      <div class="frame nutrient">
-        <h3>Nutrient removal — nitrogen</h3>
-        <div class="row"><span class="what">Nitrogen assimilated by this bed</span>
-          <span class="amount" data-nutr-mass></span></div>
-        <p class="fineprint">Eger et&nbsp;al. 2023 (<i>Nat Commun</i> 14:1894) publish
-          <b>124&nbsp;g&nbsp;N/m²/yr</b> for <i>Laminaria</i>/<i>Saccharina</i> —
-          a genus-specific MASS, from net primary production × literature tissue
-          composition. Applied to the locked <span data-nutr-ha></span>&nbsp;ha bed.</p>
-        <div class="row"><span class="what">Value, as a band</span>
-          <span class="amount band" data-nutr-band></span></div>
-        <p class="fineprint"><b>NOT a benefit transfer.</b> Eger et&nbsp;al. publish no
-          genus-specific nitrogen-only euro, which is why this row was omitted before.
-          This is <b>our own transparent replacement-cost synthesis</b>: their mass ×
-          an external European nitrogen price, each half checkable on its own.
-          Floor <b>€1.5/kg&nbsp;N</b> — SHARON/ANAMMOX side-stream treatment, the
-          cheapest place in the system to strip nitrogen (US&nbsp;EPA 832-F-07-017 p.5,
-          citing STOWA 2006). Ceiling <b>€5–20/kg&nbsp;N</b> — societal damage from
-          N-runoff (European Nitrogen Assessment ch.22, Brink &amp; van Grinsven,
-          CUP 2011, p.513). The two ends answer different questions and are 3–13×
-          apart, so the band <i>is</i> the result; a mean of it would be a
-          fabrication. Neither price is inflation-indexed.</p>
-        <p class="fineprint"><b>The weakness, stated first:</b> replacement cost needs
-          the man-made alternative to be a least-cost substitute (Shabman &amp; Batie
-          condition&nbsp;2). A treatment plant removes nitrogen permanently as N₂ gas;
-          kelp assimilates it into tissue that is largely <b>exported</b> as detritus
-          and substantially remineralised. The services are not equivalent, so this is
-          an upper bound on an upper bound. Demonstrated demand (condition&nbsp;3) is
-          not claimed. Overestimation warning: Barbier 2016.</p>
-        <p class="fineprint">Cross-check: Eger et&nbsp;al.'s own global nitrogen figure
-          pairs $73,831/ha/yr with 620&nbsp;kg&nbsp;N/ha/yr — an implicit
-          <b>$<span data-nutr-implied></span>/kg&nbsp;N</b>, about
-          <span data-nutr-x1></span>× the engineering floor and
-          <span data-nutr-x2></span>× the societal ceiling. Transferring their dollar
-          figure would import a price no European source supports.</p>
-        <p class="fineprint">Never summed with the frames above: different methods,
-          different questions, uncorrected overlap.</p>
-      </div>
-
-      <div class="scenario">
-        <h3>If the bed declines
-          <span class="disclaimer">a tool, not a prediction</span></h3>
-        <input type="range" id="loss" min="0" max="100" step="5" value="25"
-               aria-label="Percent of bed lost">
-        <p class="readout">If <b id="loss-pct">25%</b> of this bed's fisheries support
-          is lost&nbsp;→ <b id="loss-eur"></b>/yr of fisheries value at risk.</p>
-        <p class="fineprint">Assumes fisheries value falls in proportion to habitat
-          loss. That proportionality is <b>our prototype simplification</b>, not a
-          published dose–response.</p>
-      </div>
-
-      <div class="ecobox">
-        <p class="tag">Ecological status — non-monetary, kept outside the € panel</p>
-        <h3>Biodiversity</h3>
-        <p><span class="big" data-biodiv></span> indicator taxa of the
-          <i>L.&nbsp;hyperborea</i> forest indicator set (Schoenrock et&nbsp;al. 2020)
-          found in West Cork dive records.</p>
-        <h3 style="margin-top:12px">Decline</h3>
-        <p data-decline></p>
-        <details>
-          <summary>Four limitations that travel with this statement</summary>
-          <ul id="decline-limits"></ul>
-        </details>
-      </div>
-
-      <div class="transfer">
-        <p class="where">Transfer test — a different site, in France</p>
-        <h3>Le Conquet &amp; the Molène archipelago, Iroise Sea, Brittany</h3>
-        <p class="fineprint">The engine has to transfer to other Atlantic locations,
-          so it was run end to end somewhere else. <b>Every figure in this box is
-          French and none of it is an Irish euro.</b> The coastal-protection chain
-          stopped at all 53 Irish sites for one physical reason: the only published
-          <i>L.&nbsp;hyperborea</i> attenuation coefficients (Dubi &amp; Tørum 1996)
-          were measured at 4–10&nbsp;m, and the Irish beds sit at 0.8&nbsp;m or
-          12–17&nbsp;m. This bed's core sits inside that band.</p>
-        <div class="row"><span class="what">Coefficients inside their tested range</span>
-          <span class="amount" data-fr-domain></span></div>
-        <p class="fineprint">First time anywhere in this project. The Sherkin control
-          re-derived 7.9%/15.2% before any French data was touched; the site's own
-          wave bearing (<span data-fr-wave></span>° , CMEMS IBI 2015–2024) was
-          measured, never carried from Ireland, and agrees with an independent
-          NWSHELF model to <span data-fr-cross></span>°.</p>
-        <div class="row"><span class="what">Wave energy reduction</span>
-          <span class="amount" data-fr-e></span></div>
-        <p class="fineprint">Published bin coefficients; the fitted curve this project
-          normally uses gives <span data-fr-efit></span>. Mork (1996)'s published
-          envelope is 70–85% — this lands <b data-fr-mork></b>.
-          <b>But read the conservative end too:</b> over the
-          <span data-fr-unsat-share></span> of cells where the exponential has
-          <i>not</i> been run out to saturation, energy reduction is
-          <b data-fr-eunsat></b>. The gap between the two is the extrapolation,
-          not the kelp.</p>
-        <div class="row"><span class="what">Avoided damage (primary method)</span>
-          <span class="amount">not computable</span></div>
-        <p class="fineprint">The same verdict as in Ireland, and for a reason that has
-          nothing to do with depth: no published method's inputs are produced by this
-          pipeline. All three need a hazard value <i>at the receptor</i>, with and
-          without the habitat; this pipeline produces a wave-height reduction
-          <i>offshore</i>. <b>The depth constraint was the first blocker in Ireland,
-          not the only one.</b></p>
-        <div class="row"><span class="what">Replacement cost, annualised</span>
-          <span class="amount" data-fr-annual></span></div>
-        <p class="fineprint"><b>Illustrative upper bound</b> (Barbier 2016), central
-          rate, over a measured <span data-fr-front></span>&nbsp;m frontage — the
-          shoreline that has both valid-band kelp on the wave path and a built
-          receptor below 5&nbsp;m behind it. Shabman &amp; Batie condition&nbsp;3
-          (demonstrated demand) is <b>met here</b>, where it fails at Sherkin:
-          <span data-fr-low5></span> receptors sit below 5&nbsp;m within 200&nbsp;m of
-          the IGN land–sea limit. Conditions 1 and 2 are still only partly met.
-          The unit rate is <b>Irish</b> (OPW, €5,621/m) applied on a French coast — a
-          cross-country transfer, flagged not hidden, and the Iroise is a harder
-          coast than the Wexford site it came from. Scaling by the energy reduction is
-          our simplification, not a published method. This is one-off <b>capital</b>
-          annualised at 4% over 50 years; never read beside the annual Irish rows as
-          if comparable.</p>
-        <table>
-          <thead><tr><th>Rate band</th><th>Full structure</th><th>Pro-rata</th><th>Annualised</th></tr></thead>
-          <tbody id="fr-rows"></tbody>
-        </table>
-        <p class="fineprint">Habitat layer: EMODnet Seabed Habitats macroalgae EOV
-          2025, CC&nbsp;BY&nbsp;4.0, <i>L.&nbsp;hyperborea</i> polygons only.
-          The Ifremer/Sextant Molène dataset is <b>CC&nbsp;BY-NC-ND</b> and is not
-          used. Depth: EMODnet Bathymetry (~100&nbsp;m), <i>not</i> the 1&nbsp;m
-          Litto3D the site deserves — Litto3D is openly licensed but reachable only
-          through a login portal. Receptors and ground level: IGN BD&nbsp;TOPO and
-          RGE&nbsp;ALTI, Licence Ouverte 2.0.</p>
-      </div>
-    </section>
-
-    <footer>
-      <p><b>Sources &amp; attribution.</b> Contains Irish Public Sector Data
-        (Geological Survey Ireland &amp; Marine Institute) licensed under a Creative
-        Commons Attribution 4.0 International (CC&nbsp;BY&nbsp;4.0) licence (INFOMAR
-        bathymetry &amp; substrate, model inputs).</p>
-      <p>Copyright Government of Ireland. Training labels from the NPWS Reef
-        Inventory, National Parks and Wildlife Service, Department of Housing, Local
-        Government and Heritage, licensed for re-use under CC&nbsp;BY&nbsp;4.0.</p>
-      <p>Water Framework Directive waterbody and status data: Environmental
-        Protection Agency, Ireland, CC&nbsp;BY&nbsp;4.0. Wave-fetch layer: Burrows,
-        M.T. (method: Burrows et&nbsp;al. 2008, MEPS 353:1–12). Biodiversity records:
-        OBIS / Seasearch Ireland, per-dataset licences.</p>
-      <p>Contains modified Copernicus Sentinel data. Processed by the authors
-        (intertidal detection). Tide data: Irish National Tide Gauge Network,
-        Marine Institute, via ERDDAP. CC&nbsp;BY&nbsp;4.0.</p>
-      <p>Basemap © OpenStreetMap contributors. Built with Leaflet 1.9.4
-        (BSD-2-Clause), vendored locally — the map opens and renders its own layers
-        without a network connection.</p>
-    </footer>
-  </aside>
-
-  <div id="map">
-    <div id="offline-note">Basemap tiles unavailable (offline) — project layers still shown.</div>
-  </div>
+<section id="explore" class="section explore-section">
+<div class="section-heading"><div><p class="eyebrow">01 / EXPLORE HABITAT</p><h2>One coast. Different kinds of evidence.</h2></div><p>Choose a coloured area. Its evidence, physical model and limits stay together.</p></div>
+<div class="map-toolbar" role="group" aria-label="Map display">
+<button type="button" id="focus-pilot" class="active">Model pilot</button><button type="button" id="focus-cork">Cork context</button><button type="button" id="reset-map">Reset view</button>
+<label class="online-toggle"><input id="online-tiles" type="checkbox"> Online street map</label>
+<span id="map-mode" role="status">Offline geography ready</span></div>
+<div class="map-layout">
+<div class="map-wrap"><div id="map" role="region" aria-label="Interactive habitat map"></div>
+<div class="map-legend"><span><i class="key model"></i>Modelled subtidal cells</span><span><i class="key observed"></i>Detected intertidal proxy</span><span><i class="key historical"></i>Historical reference</span></div></div>
+<aside id="inspector" class="inspector" aria-live="polite">
+<p class="eyebrow">SELECTED AREA</p><h3 id="area-title">Sherkin model pilot</h3><p id="area-status" class="evidence-tag">MODELLED · UNVALIDATED</p>
+<p id="area-description"></p><dl id="area-facts"></dl>
+<p class="note">Regional biodiversity and condition context applies to this selection. Neither is a survey of these cells.</p>
+<a href="#protection" class="text-link">Explore the physical effect and € scenarios ↗</a>
+</aside></div>
+<div class="layers" role="group" aria-label="Evidence layers">
+<label><input type="checkbox" data-layer="model" checked><span class="dot model"></span>Model cells</label>
+<label><input type="checkbox" data-layer="intertidal"><span class="dot observed"></span>Satellite macroalgae</label>
+<label><input type="checkbox" data-layer="historical"><span class="dot historical"></span>Historical Laminaria</label>
+<label><input type="checkbox" data-layer="restoration"><span class="dot restoration"></span>Survey priorities</label>
+<label><input type="checkbox" data-layer="assets"><span class="dot assets"></span>Mapped assets</label>
+<label><input type="checkbox" data-layer="paths">Candidate paths &amp; shoreline</label>
+<label><input type="checkbox" data-layer="bathymetry">Coarse depth bands</label>
+<label><input type="checkbox" data-layer="satellite">Satellite RGB</label>
+<label><input type="checkbox" data-layer="biodiversity">Dive-site context</label>
+<label><input type="checkbox" data-layer="exposure">Relative exposure index</label>
 </div>
+<div class="map-footnotes"><p id="map-evidence-note"></p><p>OPW flood layers withheld while reuse permission is unresolved. The local map does not depend on internet tiles.</p></div>
+<details><summary>Keyboard area selection and full receptor screen</summary><div id="group-buttons" class="button-row"></div><p id="assets-summary"></p><div class="table-scroll"><table><thead><tr><th>Mapped object</th><th>Type</th><th>Geographic screen</th><th>Distance</th></tr></thead><tbody id="assets-table"></tbody></table></div></details>
+</section>
 
-<script src="vendor/leaflet/leaflet.js"></script>
-<script>
-"use strict";
-const D = /*__MAP_DATA__*/null;
-if (!D) {
-  document.body.innerHTML = "<p style='padding:2em'>Build error: no embedded data.</p>";
-  throw new Error("MAP_DATA missing — open the built outputs/map/index.html, not the template");
-}
+<section id="protection" class="section protection-section">
+<div class="section-heading"><div><p class="eyebrow">02 / PROTECTION &amp; ECONOMICS</p><h2>A smaller wave is only the first step.</h2></div><p>We estimate a physical effect inside assumed kelp. Establishing benefits on land needs the next links in the chain.</p></div>
+<div class="physical-layout">
+<div class="wave-story">
+<div class="comparison-head"><h3>With and without the assumed habitat</h3><div class="segmented" role="group" aria-label="Wave illustration"><button id="with-kelp" class="active" type="button" aria-pressed="true">With kelp</button><button id="without-kelp" type="button" aria-pressed="false">Without kelp</button></div></div>
+<svg id="wave-diagram" viewBox="0 0 680 255" role="img" aria-labelledby="wave-title wave-desc"><title id="wave-title">Relative wave height across assumed habitat</title><desc id="wave-desc">Schematic model comparison. This is not a water-level or coastal flood forecast.</desc>
+<path d="M25 225 Q160 225 270 217 T470 208 Q545 190 650 155" fill="none" stroke="#b4ada0" stroke-width="2"/>
+<path id="wave-before" d="" fill="none" stroke="#788f97" stroke-width="3"/>
+<path id="wave-after" d="" fill="none" stroke="#176655" stroke-width="4"/>
+<g id="kelp-drawing" fill="none" stroke="#176655" stroke-width="3"><path d="M270 216 Q250 193 269 169 Q282 151 266 131 M304 215 Q328 189 304 168 Q294 150 309 132 M342 214 Q325 185 343 161 Q355 142 341 127 M378 212 Q391 190 374 172 Q363 151 378 130 M410 210 Q398 189 416 164 Q429 146 414 129"/></g>
+<text x="25" y="29">Incoming relative height</text><text id="wave-output" x="440" y="29"></text>
+<text x="250" y="249">Assumed habitat footprint</text>
+</svg>
+<p class="quiet">Schematic, equal incoming wave energy across sampled paths. Offshore Hs is not substituted as the nearshore incident height.</p>
+<div class="physical-stats"><div><strong id="height-effect"></strong><span>Wave-height reduction</span></div><div><strong id="energy-effect"></strong><span>Wave-energy reduction</span></div><div><strong id="intercept"></strong><span>Wave intercept across footprint</span></div></div>
+<p id="physical-meaning" class="note"></p>
+</div>
+<div class="physical-evidence">
+<h3>What connects to the shore?</h3><ol class="evidence-chain"><li><strong>Habitat</strong><span>Suitability model plus historical reference. Present species and density need field checks.</span></li><li><strong>Wave path</strong><span id="wave-path-copy"></span></li><li><strong>Shoreline hazard</strong><span>Not quantified. Refraction, breaking, surge and receptor water levels are missing.</span></li><li><strong>Damage avoided</strong><span>Not quantified. Event probabilities, asset values and damage functions are also needed.</span></li></ol>
+<p id="shoreline-copy" class="note"></p>
+</div></div>
+<details class="science-details"><summary>Direction, tide and historical-model sensitivity</summary><div class="two-columns"><div><h3>Direction matters</h3><div id="direction-chart" class="bar-chart" aria-label="Direction sensitivity"></div><p class="quiet">±30° are scenario choices, not a confidence interval or a nearshore direction estimate.</p></div><div><h3>Tide changes the valid domain</h3><div class="table-scroll"><table><thead><tr><th>Water level above LAT</th><th>Domain coverage</th><th>Height reduction</th></tr></thead><tbody id="tide-table"></tbody></table></div><p class="quiet">Unknown attenuation outside 4–10 m is not treated as zero. No full-bed estimate is shown when some rays leave the domain.</p></div></div><p id="legacy-copy"></p><ul id="physical-limits"></ul></details>
 
-const L_ = D.locked;
-const eur = n => "€" + Math.round(n).toLocaleString("en-IE");
+<div class="economics-head"><p class="eyebrow">ILLUSTRATIVE, CONDITIONAL / NOT AVOIDED DAMAGE</p><h2>An engineering cost comparison you can question.</h2><p>Change the assumptions. These are construction-funding scenarios, with capital and annual equivalents kept separate.</p></div>
+<div class="calculator-layout">
+<form id="cost-form" class="calculator-controls" novalidate>
+<label for="cc-width">Assumed cross-shore width <span>metres</span></label><input id="cc-width" type="number" value="100" min="1" max="10000" step="1" inputmode="decimal">
+<label for="cc-effect">Pro-rata cost share <span>% assumption</span></label><input id="cc-effect" type="number" value="15.2" min="0" max="100" step="0.1" inputmode="decimal">
+<p class="quiet">The previous calculator used its 15.2% energy-model value as a cost share. This relationship has no validated cost-response basis.</p>
+<button id="use-physical" type="button" class="text-button">Try the new energy-model fraction</button>
+<div class="input-pair"><div><label for="cc-rate">Discount rate <span>%</span></label><input id="cc-rate" type="number" value="4" min="0" max="100" step="0.1"></div><div><label for="cc-life">Lifetime <span>years</span></label><input id="cc-life" type="number" value="50" min="1" max="1000" step="1"></div></div>
+<button id="cc-reset" type="button">Reset original assumptions</button>
+</form>
+<div class="calculator-results"><p id="cc-error" class="error" role="alert" hidden></p>
+<div id="cc-values" aria-live="polite">
+<p class="micro">PROJECT PRO-RATA SCENARIO / ONE-OFF CAPITAL</p><div id="cc-pro" class="money-large"></div>
+<p class="quiet">Selected Wexford approved-funding range × assumed comparison length × pro-rata share</p>
+<dl class="money-facts"><div><dt>Annualised capital equivalent</dt><dd id="cc-annual"></dd></div><div><dt>Full-length funding benchmark</dt><dd id="cc-full"></dd></div><div><dt>Area ÷ assumed width</dt><dd id="cc-length"></dd></div></dl>
+<p class="note">This comparison length is not measured protected coastline. Annualised capital is not annual savings. The band is a scenario range, not a statistical confidence interval.</p>
+<div id="cost-sensitivity" class="bar-chart" aria-label="Annual cost sensitivity to assumed width"></div>
+</div>
+<button id="cc-download" type="button" class="button">Download this calculation</button>
+</div></div>
+<details><summary>Funding sources and replacement-cost conditions</summary><p id="cost-source-copy"></p><p>Rock revetment is the available funding comparator. A low-crested breakwater is physically closer to kelp wave attenuation, but no local equivalent design or cost is established.</p><div class="conditions"><div><strong>Equivalent service</strong><span>Not demonstrated</span></div><div><strong>Least-cost alternative</strong><span>Not demonstrated</span></div><div><strong>Demand for substitution</strong><span>Not demonstrated</span></div></div><p><a href="https://www.floodinfo.ie/county-summary/?c=25" target="_blank" rel="noopener noreferrer">OPW funding records ↗</a></p><p>Rates mix nominal 2024 and 2026 approved grants from one site. No inflation, maintenance, grant gross-up or Cork design adjustment. Never add these scenarios to fisheries or nutrient-service figures.</p></details>
+</section>
 
-/* ---------- panel values: every number comes from the locked block ---------- */
-document.querySelector("[data-build]").textContent = D.build_date;
-document.querySelector("[data-auc]").textContent = L_.model_auc.toFixed(3);
-document.querySelector("[data-ncells]").textContent = D.suitability.cells.length;
-document.querySelector("[data-ntotal]").textContent = D.suitability.n_total_in_aoi.toLocaleString("en-IE");
-document.querySelector("[data-indtotal]").textContent = L_.indicator_total;
-document.querySelector("[data-crab]").textContent = eur(L_.crab_eur_yr) + "/yr";
-document.querySelector("[data-crab-range]").textContent =
-  eur(L_.crab_sd_low) + "–" + eur(L_.crab_sd_high);
-document.querySelector("[data-lobster]").textContent = eur(L_.lobster_eur_yr) + "/yr";
-document.querySelector("[data-subtotal]").textContent = L_.fisheries_subtotal_label;
-document.querySelector("[data-avoided]").textContent = L_.avoided_damage;
-document.querySelector("[data-avoided-reason]").textContent = L_.avoided_damage_reason;
-document.querySelector("[data-replacement]").textContent =
-  eur(L_.replacement_rate_eur_m) + "/m";
-document.querySelector("[data-replacement-range]").textContent =
-  eur(L_.replacement_range[0]) + "–" + eur(L_.replacement_range[1]) + "/m";
-document.querySelector("[data-att-h]").textContent = L_.wave_height_attenuation_pct + "%";
-document.querySelector("[data-att-e]").textContent = L_.wave_energy_reduction_pct + "%";
-document.querySelector("[data-biodiv]").textContent = L_.biodiversity;
-/* ---------- restoration layer caption ---------- */
-const R_ = D.restoration;
-document.querySelector("[data-rest-label]").textContent = R_.label;
-document.querySelector("[data-rest-n]").textContent = R_.r1_cells;
-document.querySelector("[data-rest-ha]").textContent = R_.r1_ha.toFixed(1);
-document.querySelector("[data-rest-fpr]").textContent = R_.fpr_pct + "%";
-document.querySelector("[data-rest-fprn]").textContent = R_.fpr_n;
-document.querySelector("[data-rest-crit]").textContent = R_.fpr_criterion_pct + "%";
-document.querySelector("[data-rest-r2]").textContent = R_.r2_cells.toLocaleString("en-IE");
-document.querySelector("[data-rest-r2ha]").textContent = R_.r2_ha.toFixed(0);
+<section id="condition" class="section living-section">
+<div class="section-heading"><div><p class="eyebrow">03 / CONDITION &amp; BIODIVERSITY</p><h2>Living habitat needs repeated observation.</h2></div><p>Environmental signals show context. They cannot tell us how much kelp this bed has lost.</p></div>
+<div class="two-columns"><article><h3>Offshore wave exposure</h3><p id="wave-climate-copy"></p><div id="wave-chart" class="annual-chart"></div><p class="quiet">Annual mean Hs in offshore reanalysis. Year coverage is available in the evidence download. Descriptive variability is not a measured decline signal.</p></article>
+<article><h3>Regional temperature context</h3><p id="sst-copy"></p><div id="sst-chart" class="annual-chart"></div><p id="sst-note" class="quiet"></p></article></div>
+<div class="biodiversity-layout"><div><p class="eyebrow">REGIONAL PRESENCE INDICATOR</p><h3 class="bio-heading"><span id="bio-count"></span><br>reference taxa recorded</h3><p>Count the distinct reference taxa recorded at West Cork dive sites. A fuller species list often reflects more observation effort.</p><div id="bio-dots" class="taxa-dots"></div><p class="quiet">Filled = recorded. Open = unrecorded, not proven absent. This is not a percentage biodiversity score.</p></div>
+<div><h3>What is the condition of this bed?</h3><p class="unknown-text">Kelp decline: not measurable with current evidence.</p><p>No comparable repeat extent, biomass or density measurements establish loss here. The EPA macroalgae quality element was High in its available historical cycles, but those waterbody assessments did not measure this model bed.</p><div id="epa-timeline"></div><details><summary>Taxa, source and sampling effort</summary><p id="bio-method"></p><div id="taxa-list"></div></details></div></div>
+</section>
 
-/* ---------- exposure layer caption ---------- */
-const X_ = D.exposure;
-document.querySelector("[data-exp-label]").textContent = X_.label;
-document.querySelector("[data-exp-n]").textContent = X_.n_points;
-document.querySelector("[data-exp-vars]").textContent = X_.variables_used.length;
-document.querySelector("[data-exp-red]").textContent = X_.habitat_median_reduction.toFixed(3);
-document.querySelector("[data-exp-hab]").textContent = X_.habitat_points;
+<section id="restoration" class="section restoration-section">
+<div class="section-heading"><div><p class="eyebrow">04 / RESTORATION &amp; NEXT ACTIONS</p><h2>Survey first. Restore where evidence supports it.</h2></div><p>These are indicative investigation priorities, not confirmed restoration sites or management recommendations.</p></div>
+<div class="restoration-layout"><div><div class="large-ratio" id="historical-match"></div><h3>old candidate cells overlap historical Laminaria at their centres</h3><p id="restoration-reconcile"></p><button id="show-restoration" type="button" class="button">Show survey priorities on map</button></div>
+<div><h3>Validation remains unresolved</h3><p id="validation-copy"></p><div class="validation-track"><span id="validation-bar"></span><i aria-hidden="true"></i></div><div class="track-labels"><span>Legacy external FPR</span><span>Acceptance threshold 30%</span></div>
+<ol class="next-actions"><li>Revisit historically mapped habitat and verify species, extent and density.</li><li>Resolve conflicting reference labels before retraining or ranking restoration sites.</li><li>Measure waves across the habitat with tides and periods, then connect the model to receptors.</li></ol></div></div>
+</section>
 
-/* ---------- nutrient frame ---------- */
-const N_ = D.nutrient;
-document.querySelector("[data-nutr-mass]").textContent =
-  Math.round(N_.n_kg_total_yr).toLocaleString("en-IE") + " kg N/yr";
-document.querySelector("[data-nutr-ha]").textContent = L_.bed_ha;
-document.querySelector("[data-nutr-band]").textContent =
-  eur(N_.band.engineering_floor) + " – " + eur(N_.band.societal_high) + "/yr";
-document.querySelector("[data-nutr-implied]").textContent = N_.eger_implied_usd_per_kg;
-document.querySelector("[data-nutr-x1]").textContent = Math.round(N_.eger_vs_floor_x);
-document.querySelector("[data-nutr-x2]").textContent = Math.round(N_.eger_vs_ceiling_x);
+<section id="transfer" class="section transfer-section"><p class="eyebrow">05 / TRANSFERABILITY</p><h2>The method travels. Its calibration must follow.</h2><div class="two-columns"><div><h3>A second Cork segment</h3><p>The same physical engine runs a depth-screened Mizen Head comparison with local model cells. A site with no valid habitat input reports no estimate.</p><p id="transfer-copy"></p><button id="transfer-run" type="button">Show the transfer test</button><pre id="transfer-result" hidden></pre></div><div><h3>Earlier Iroise Sea study, France</h3><p id="france-copy"></p><p class="quiet">An earlier pipeline run demonstrates portability with local habitat and depth inputs. It does not validate the Cork pilot. Irish funding rates establish no French economic value.</p><details><summary>Other ecosystem-service research</summary><p>The earlier ≈€1.34 million/year fisheries figure combined nationally scaled crab and lobster calculations. It is neither protection value nor the contribution of these seven model cells. The local-to-national habitat attribution is unvalidated, so it is retained only as research history.</p><p>Earlier nitrogen calculations multiply a global genus-level mass model by external prices. Local permanent nitrogen removal and demand for replacement are unproven. These figures are not combined with protection scenarios.</p></details></div></div></section>
 
-/* ---------- transfer test (France) ---------- */
-const F_ = D.france;
-const pct = x => (x * 100).toFixed(1) + "%";
-document.querySelector("[data-fr-domain]").textContent =
-  F_.cells_inside_domain.toLocaleString("en-IE") + " of " +
-  F_.cells_in_band.toLocaleString("en-IE");
-document.querySelector("[data-fr-wave]").textContent = F_.wave_from_deg;
-document.querySelector("[data-fr-cross]").textContent =
-  (F_.wave_crosscheck && F_.wave_crosscheck.delta_deg != null)
-    ? F_.wave_crosscheck.delta_deg : "—";
-document.querySelector("[data-fr-e]").textContent = pct(F_.E_bins);
-document.querySelector("[data-fr-efit]").textContent = pct(F_.E_fit);
-document.querySelector("[data-fr-mork]").textContent =
-  F_.mork.inside ? "inside it" : "outside it";
-document.querySelector("[data-fr-unsat-share]").textContent =
-  Math.round(F_.unsaturated.share_of_cells * 100) + "%";
-document.querySelector("[data-fr-eunsat]").textContent =
-  pct(F_.unsaturated.published_bins.E_reduction);
-document.querySelector("[data-fr-annual]").textContent =
-  eur(F_.rc_central.annualised_eur_per_yr) + "/yr";
-document.querySelector("[data-fr-front]").textContent =
-  Math.round(F_.frontage_priced_m).toLocaleString("en-IE");
-document.querySelector("[data-fr-low5]").textContent = F_.receptors.below_5m;
-document.getElementById("fr-rows").innerHTML = F_.rc_rows
-  .filter(r => r.coefficient_spelling === "published_bins")
-  .map(r => "<tr><td>" + r.rate_band + "</td><td>" +
-       eur(r.full_structure_eur) + "</td><td>" +
-       eur(r.pro_rata_eur) + "</td><td>" +
-       eur(r.annualised_eur_per_yr) + "/yr</td></tr>").join("");
-
-document.querySelector("[data-decline]").textContent = L_.decline_sentence;
-document.getElementById("decline-limits").innerHTML =
-  L_.decline_limitations.map(t => "<li>" + t + "</li>").join("");
-
-/* ---------- scenario slider: crab + lobster rows, nothing else ---------- */
-const fisheriesTotal = L_.crab_eur_yr + L_.lobster_eur_yr;
-const slider = document.getElementById("loss");
-function updateScenario() {
-  const pct = Number(slider.value);
-  document.getElementById("loss-pct").textContent = pct + "%";
-  const risk = Math.round(fisheriesTotal * pct / 100 / 1000) * 1000;
-  document.getElementById("loss-eur").textContent = "≈ " + eur(risk);
-}
-slider.addEventListener("input", updateScenario);
-updateScenario();
-
-/* ---------- map ---------- */
-const bbox = D.aoi.bbox; // lon_min, lat_min, lon_max, lat_max
-const map = L.map("map", { zoomControl: true });
-map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]]);
-L.control.scale({ imperial: false }).addTo(map);
-
-let tileFailed = false;
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19, attribution: "© OpenStreetMap contributors",
-}).on("tileerror", () => {
-  if (!tileFailed) { tileFailed = true;
-    document.getElementById("offline-note").style.display = "block"; }
-}).addTo(map);
-
-map.createPane("epaPane").style.zIndex = 410;
-map.createPane("suitPane").style.zIndex = 430;
-map.createPane("interPane").style.zIndex = 440;
-map.createPane("bedPane").style.zIndex = 450;
-map.createPane("sitePane").style.zIndex = 470;
-map.createPane("restorePane").style.zIndex = 435;
-map.createPane("exposurePane").style.zIndex = 480;
-
-/* suitability: sequential single-hue ramp, light = low (recedes), dark = high */
-const RAMP = ["#96d5cf", "#6bc0b8", "#43a49c", "#23837c", "#0e615b"];
-function rampColor(s) {
-  const x = Math.min(Math.max(s, 0), 1) * (RAMP.length - 1);
-  return RAMP[Math.round(x)];
-}
-/* SVG, not canvas: a canvas renderer would blanket the map and swallow the
-   clicks meant for the EPA polygons in the pane beneath it. */
-const dLat = D.suitability.grid_m / 111320;
-const suitLayer = L.layerGroup(D.suitability.cells.map(([lon, lat, s]) => {
-  const dLon = dLat / Math.cos(lat * Math.PI / 180);
-  return L.rectangle(
-    [[lat - dLat / 2, lon - dLon / 2], [lat + dLat / 2, lon + dLon / 2]],
-    { pane: "suitPane", stroke: false,
-      fillColor: rampColor(s), fillOpacity: 0.8 })
-    .bindPopup("<h4>Modelled suitability: " + s.toFixed(2) + "</h4>" +
-      "<div class='popup-note'>50 m cell on mapped reef, inside the model's " +
-      "training range. Operating threshold " +
-      D.suitability.threshold.toFixed(2) + " (specificity 0.9).</div>");
-}));
-
-/* intertidal macroalgae extent — violet, deliberately unlike the teal
-   subtidal ramp and the amber bed: the two products must never read as one */
-document.querySelector("[data-inter-scenes]").textContent = D.intertidal.n_scenes;
-document.querySelector("[data-inter-year]").textContent = D.intertidal.year;
-document.querySelector("[data-inter-tide]").textContent = D.intertidal.tide_range_m;
-document.querySelector("[data-inter-ha]").textContent = D.intertidal.area_ha;
-const interLayer = L.geoJSON(D.intertidal.extent, {
-  pane: "interPane",
-  style: { color: "#5b21b6", weight: 1, fillColor: "#8b5cf6", fillOpacity: 0.55 },
-  onEachFeature: (f, ly) => ly.bindPopup(
-    "<h4>Intertidal macroalgae (Sentinel-2)</h4>" +
-    "Species-agnostic detection — NDVI cannot separate fucoids " +
-    "(<i>Fucus</i>, <i>Ascophyllum</i>) from kelps." +
-    "<div class='popup-note'>Tide dose-response, " + D.intertidal.n_scenes +
-    " scenes " + D.intertidal.year + "; extent unvalidated. A different " +
-    "product from the subtidal suitability model — never merged with it, and " +
-    "the subtidal wave-attenuation coefficients do not apply here.</div>"),
-});
-
-/* the 1.75 ha bed */
-const bedLayer = L.geoJSON(D.bed, {
-  pane: "bedPane",
-  style: { color: "#7c2d12", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.55 },
-  onEachFeature: (f, ly) => ly.bindPopup(
-    "<h4>Modelled kelp bed cell</h4>" +
-    "Depth " + f.properties.depth_m + " m · cluster " + f.properties.cluster +
-    "<div class='popup-note'>One of 7 × 50 m cells (1.75 ha total) passing the " +
-    "depth and suitability gates. Model output, not a survey.</div>"),
-});
-
-/* EPA waterbodies */
-const epaLayer = L.geoJSON(D.epa, {
-  pane: "epaPane",
-  style: f => ({
-    color: "#3f3f46", weight: f.properties.code === "IE_SW_140_0000" ? 2 : 1.2,
-    dashArray: "5 4", fillColor: "#3f3f46",
-    fillOpacity: f.properties.code === "IE_SW_140_0000" ? 0.07 : 0.03 }),
-  onEachFeature: (f, ly) => {
-    const rows = Object.entries(f.properties.status).map(([cycle, st]) =>
-      "<tr><td>" + cycle + "</td><td>" + st.overall + "</td><td>" +
-      (st.macroalgae ? st.macroalgae : "—") + "</td></tr>").join("");
-    ly.bindPopup("<h4>" + f.properties.name + "</h4>" +
-      "<span class='popup-note'>" + f.properties.code + " — EPA WFD status</span>" +
-      "<table><tr><th>Cycle</th><th>Overall</th><th>Macroalgae</th></tr>" +
-      rows + "</table>" +
-      "<div class='popup-note'>“—” = element not published for that cycle.</div>");
-  },
-});
-
-/* dive sites */
-const siteLayer = L.layerGroup(D.biodiversity.sites.map(s =>
-  L.circleMarker([s.lat, s.lon], {
-    pane: "sitePane", radius: 3 + Math.sqrt(s.indicators) * 1.8,
-    color: "#fcfcfb", weight: 1.5, fillColor: "#334155", fillOpacity: 0.85 })
-    .bindPopup("<h4>Dive survey site</h4>" +
-      s.records + " records · " + s.species + " taxa · <b>" + s.indicators +
-      " of " + D.biodiversity.total + "</b> indicator taxa" +
-      "<div class='popup-note'>OBIS/Seasearch records; site position is the " +
-      "survey coordinate.</div>")));
-
-/* restoration candidates (class R1 only — R2 is off this map) */
-const restoreLayer = L.geoJSON(D.restoration.r1, {
-  pane: "restorePane",
-  style: { color: "#1d6fa5", weight: 1.5, dashArray: "4 3",
-           fillColor: "#1d6fa5", fillOpacity: 0.35 },
-  onEachFeature: (f, ly) => ly.bindPopup(
-    "<h4>Restoration candidate</h4>" +
-    "Rank " + f.properties.rank_in_class + " of " + D.restoration.r1_cells +
-    " here · modelled suitability " + f.properties.suitability +
-    "<div class='popup-note'>" + D.restoration.label + ". Surveyed, another " +
-    "community recorded, yet the model says the conditions suit " +
-    "<i>L. hyperborea</i>. The model fails its own external false-positive " +
-    "criterion on exactly these cells (" + D.restoration.fpr_pct + "% against " +
-    "a " + D.restoration.fpr_criterion_pct + "% limit), so roughly two in " +
-    "three are expected to be model error. Rank is ordinal. No euro is " +
-    "attached.</div>"),
-});
-
-/* qualitative coastal exposure index */
-const EXP_RAMP = ["#f2e6c9", "#e2c08d", "#d19a6a", "#b26a48", "#8c3a2b"];
-const exposureLayer = L.geoJSON(D.exposure.points, {
-  pane: "exposurePane",
-  pointToLayer: (f, latlng) => L.circleMarker(latlng, {
-    pane: "exposurePane", radius: 5,
-    color: "#fcfcfb", weight: 1.2,
-    fillColor: EXP_RAMP[Math.max(0, Math.min(4,
-      Math.round(f.properties.exposure_quintile) - 1))],
-    fillOpacity: 0.95 }),
-  onEachFeature: (f, ly) => {
-    const p = f.properties;
-    ly.bindPopup(
-      "<h4>Coastal exposure — shore point</h4>" +
-      "Exposure index <b>" + p.EI + "</b> (quintile " + p.exposure_quintile +
-      " of 5)" +
-      "<table>" +
-      "<tr><td>with habitat</td><td>" + p.EI + "</td></tr>" +
-      "<tr><td>with no habitat anywhere</td><td>" + p.EI_no_habitat + "</td></tr>" +
-      "<tr><td>habitat lowers it by</td><td>" + p.EI_habitat_reduction + "</td></tr>" +
-      "</table>" +
-      "<div class='popup-note'>" + D.exposure.label + ". Geometric mean of " +
-      D.exposure.variables_used.length + " ranked variables (" +
-      D.exposure.variables_used.join(", ") + "); " +
-      D.exposure.variables_omitted.join(" and ") + " omitted. " +
-      "The index is ORDINAL: it says this point is more or less exposed than " +
-      "another point on this map, and nothing else. It is not a hazard, not " +
-      "a probability, and it is not convertible to a euro.</div>");
-  },
-});
-
-/* toggles */
-function wire(id, layer, on) {
-  const cb = document.getElementById(id);
-  cb.checked = on;
-  if (on) layer.addTo(map);
-  cb.addEventListener("change", () =>
-    cb.checked ? layer.addTo(map) : map.removeLayer(layer));
-}
-wire("ly-suit", suitLayer, true);
-wire("ly-inter", interLayer, true);
-wire("ly-bed", bedLayer, true);
-wire("ly-epa", epaLayer, false);
-wire("ly-sites", siteLayer, false);
-wire("ly-restore", restoreLayer, false);
-wire("ly-exposure", exposureLayer, false);
-
-/* legend */
-const legend = L.control({ position: "bottomright" });
-legend.onAdd = () => {
-  const div = L.DomUtil.create("div", "legend");
-  div.innerHTML =
-    "Modelled suitability (0–1)" +
-    "<div class='bar'><span class='thresh' title='operating threshold'></span></div>" +
-    "<div class='scale-row'><span>0</span><span class='t'>0.71</span><span>1</span></div>" +
-    "<div class='bed-key'><span class='bed-swatch'></span>Modelled bed — 1.75 ha</div>" +
-    "<div class='bed-key'><span class='bed-swatch' style='background:rgba(139,92,246,.55);border-color:#5b21b6'></span>Intertidal macroalgae (satellite)</div>";
-  return div;
-};
-legend.addTo(map);
-</script>
-</body>
-</html>
+<section id="methods" class="section methods-section">
+<div class="section-heading"><div><p class="eyebrow">06 / DATA &amp; METHODS</p><h2>Every result should have a way back to its source.</h2></div><p id="build-stamp"></p></div>
+<div class="button-row"><a href="evidence.json" download class="button">Download evidence &amp; calculations</a><a href="build_manifest.json" download class="button">Download build checksums</a></div>
+<p>Areas and distances use Irish Transverse Mercator (EPSG:2157), with coordinates converted to WGS84 for the map. Habitat groups use a declared 2 m rounding tolerance; attenuation uses exact polygon intersections and never fills the gaps.</p>
+<details><summary>Sources, dates, licences and attributions</summary><div id="source-list"></div></details>
+<details><summary>Scientific limitations and missing inputs</summary><ul><li>No contemporary species, density or biomass validation for the model cells.</li><li>Intertidal satellite detection cannot establish subtidal L. hyperborea.</li><li>No validated nearshore incident spectrum, wave transformation, surge or receptor flood depth.</li><li>No event probabilities, receptor asset values or compatible local damage functions for avoided damage.</li><li>No measured repeat kelp extent or biomass establishes a decline rate.</li><li>The habitat classifier failed external validation; new historical label conflicts need review.</li><li>Conditional cost scenarios do not satisfy the requirements for an established replacement-cost valuation.</li></ul></details>
+<p id="optional-warnings" class="note"></p>
+</section>
+</main>
+<footer class="footer"><div><strong>Seeing the Invisible Shield</strong><p>Valuing Coastal Habitats as Natural Infrastructure</p></div><div><p>Challenge owner: Elif Gul Abdul Halim<br>Ocean Hackathon Cork · 16–18 October 2026</p><a href="https://www.campusmer.fr/all-challenges-ork02-seeing-the-invisible-shield-valuing-coastal-habitats-as-natural-infrastructure-4385-475-0-0.html" target="_blank" rel="noopener noreferrer">Published challenge ↗</a></div><p>AI-assisted preparation, 13 October 2026.<br>Prepared work and event contributions must be disclosed separately.</p></footer>
+<noscript><p class="error">JavaScript is required for the interactive map. Enable it, or read the evidence.json file for the computed data.</p></noscript>
+<script src="vendor/leaflet/leaflet.js"></script><script>const D = /*__MAP_DATA__*/null;</script><script src="app.js"></script>
+</body></html>

@@ -1,3 +1,13 @@
+# Current guidance update 13 October 2026
+
+The user-provided `docs/overnight_20261013/MASTER_BRIEF.md` replaces older master instructions. The text below is retained as historical provenance, not as authority to preserve disproved results. In particular, the old blanket coastal EUR 0 conclusion is withdrawn: actual avoided damage is NOT QUANTIFIED. EPA macroalgae status cannot establish no kelp decline. Model validation has not passed. The NPWS SSCO comparison requires restoration classes to be treated as survey/revisit priorities. Source calculations and the current UI are built with `REBUILD_DEMO.bat`; do not apply old HTML patch scripts. Original raw data and old research outputs remain intact.
+
+The current application uses `src/evidence_pipeline.py` and `src/coastal_physics.py`. For changes and tests see `docs/overnight_20261013/COMPLETION_REPORT.md`. Current launch method: `START_DEMO.bat`.
+
+---
+
+# Historical guidance below
+
 # CLAUDE.md — OCEANHACKATHON
 
 This file is the authoritative brief. It intentionally restates everything a
