@@ -48,6 +48,8 @@ try{
  await settleMap();
  await page.locator('#map').screenshot({path:path.join(qa,'map_evidence_context.png')});
  await page.locator('#reset-map').click();
+ await page.locator('#assessment-area').selectOption('0');
+ await page.locator('#cc-length-mode').selectOption('assumed_width');await page.locator('#cc-effect').fill('15.2');
  const original=await page.evaluate(()=>window.CoastalCostCalculator.getResult());
  assert.ok(Math.abs(original.bands.low.pro-114795.47483870966)<.01);
  await page.locator('#cc-width').fill('50');
@@ -84,7 +86,7 @@ try{
  await page.locator('#online-tiles').click();await page.waitForFunction(()=>!document.getElementById('online-tiles').checked&&document.getElementById('map-mode').textContent.includes('unavailable'));
  assert.match(await page.locator('#map-mode').textContent(),/unavailable/);
  checks.push({name:'Failed online tiles fall back to local geography',status:'PASS'});
- await context.setOffline(true);await page.locator('#cc-width').fill('150');assert.ok(await page.evaluate(()=>window.CoastalCostCalculator.getResult()));
+ await context.setOffline(true);await page.locator('#cc-length-mode').selectOption('assumed_width');await page.locator('#cc-width').fill('150');assert.ok(await page.evaluate(()=>window.CoastalCostCalculator.getResult()));
  await page.locator('#reset-map').click();checks.push({name:'Offline map and calculator remain interactive',status:'PASS'});
  await context.setOffline(false);
  await page.setViewportSize({width:390,height:844});await page.goto(url,{waitUntil:'networkidle'});

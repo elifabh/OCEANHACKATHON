@@ -577,20 +577,24 @@ def main() -> None:
     payload = build(base)
     from story_evidence import build_story
     payload['story'] = build_story(payload)
+    from parametric_assessment import build_parametric, cork_screen
+    payload['parametric'] = build_parametric(payload)
+    payload['cork_screen'] = cork_screen()
     payload['build_date'] = '2026-10-14'
     payload['visual_credits'] = json.loads((ROOT/'src/assets/story/credits.json').read_text(encoding='utf-8'))
     payload['ireland_context'] = json.loads((ROOT/'src/assets/story/ireland-context.geojson').read_text(encoding='utf-8'))
     payload["sources"] = json.loads((ROOT/"src/data_sources.json").read_text(encoding="utf-8"))
     if payload["biodiversity"]:
         payload["biodiversity"]["taxa"] = pd.read_csv(ROOT/"outputs/indicator_match.csv").fillna("").to_dict("records")
-    source_files = ["src/build_map.py", "src/common.py", "src/evidence_pipeline.py", "src/coastal_physics.py", "src/coastal_cost_calculator.py", "src/run_segment.py", "src/map_template.html", "src/app.js", "src/app.css", "src/data_sources.json", "src/story_evidence.py", "src/story.js"]
+    source_files = ["src/build_map.py", "src/common.py", "src/evidence_pipeline.py", "src/coastal_physics.py", "src/coastal_cost_calculator.py", "src/run_segment.py", "src/map_template.html", "src/app.js", "src/app.css", "src/data_sources.json", "src/story_evidence.py", "src/story.js", "src/atlas.css", "src/assessment.js", "src/parametric.js", "src/parametric_assessment.py", "src/screen_cape_clear.py"]
     from evidence_pipeline import OSM_CACHE,OSM_COAST_COMPLETE,NPWS,AUDIT
     inputs=[ROOT/p for p in ["outputs/valuation/step3b2_flood_check.gpkg", "outputs/model/model_multisite_report.json", "outputs/model/suitability_multisite_predictions.csv", "outputs/indicator_match.csv", "outputs/indicator_site_scores.csv", "outputs/coastal_cost_calculation/calculation.json", "data/cmems/ibi_wav_sherkin.nc", "data/emodnet/exposure_sherkin_baltimore.tif", "outputs/restoration/restoration_candidates.geojson", "outputs/thumbnails/sherkin_baltimore__2022-07-14__T29UMT.png", "outputs/france/france_chain.json", "outputs/france/france_valuation.json", "outputs/valuation/nutrient_removal.json"]]
+    inputs += list((ROOT/'outputs/visual_v2_20261014/inputs').glob('*.json'))
     inputs += [OSM_CACHE,OSM_COAST_COMPLETE,AUDIT/'assets_INTERNAL_REVIEW.geojson']
     inputs += list(NPWS.parent.glob(NPWS.stem+'.*'))
     for folder,pattern in [('outputs/intertidal','*sherkin*'),('outputs/epa_cwb','*.geojson'),('outputs/exposure_index','*sherkin*'),('outputs/overnight_20261013/inputs','*'),('src/vendor/leaflet','*')]:
         inputs += [p for p in (ROOT/folder).glob(pattern) if p.is_file()]
-    inputs += [ROOT/'outputs/anaird/anaird_phaseb_summary.json']
+    inputs += [ROOT/p for p in ['outputs/anaird/anaird_phaseb_summary.json','outputs/national_candidate_table.csv','outputs/habitat_gap_model_cells.csv','outputs/asset_screen/cache/cluster_38.json']]
     inputs += [p for p in (ROOT/'src/assets/story').glob('*') if p.is_file()]
     inputs=sorted(set(p for p in inputs if p.is_file()))
     manifest = {"build_date":"2026-10-14", "source_sha256":{p:sha(ROOT/p) for p in source_files}, "input_sha256":{p.relative_to(ROOT).as_posix():sha(p) for p in inputs}}
@@ -609,7 +613,7 @@ def main() -> None:
         raise ValueError("Restricted flood-derived data reached public payload")
     OUT_DIR.mkdir(parents=True,exist_ok=True)
     shutil.copytree(VENDOR_SRC,OUT_DIR/"vendor",dirs_exist_ok=True)
-    for name in ["app.js","app.css","story.js"]:
+    for name in ["app.js","app.css","story.js","atlas.css","assessment.js","parametric.js"]:
         atomic_write(OUT_DIR/name,(ROOT/"src"/name).read_bytes())
     shutil.copytree(ROOT/'src/assets/story',OUT_DIR/'assets/story',dirs_exist_ok=True)
     # This is a verified existing Sentinel water-stretched RGB, grey land mask.
@@ -619,7 +623,7 @@ def main() -> None:
     atomic_write(OUT_DIR/"evidence.json",json.dumps(clean(payload),ensure_ascii=False,indent=2,allow_nan=False).encode("utf-8"))
     atomic_write(OUT_DIR/"index.html",html.encode("utf-8"))
     manifest["build_id"]=payload["build_id"]
-    delivered = [OUT_DIR/p for p in ["index.html","app.js","app.css","story.js","evidence.json"]]
+    delivered = [OUT_DIR/p for p in ["index.html","app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","evidence.json"]]
     delivered += [p for p in (OUT_DIR/'assets/story').rglob('*') if p.is_file()]
     delivered += [p for p in (OUT_DIR/"vendor").rglob("*") if p.is_file()]
     if (OUT_DIR/"sentinel-context.png").exists():

@@ -62,7 +62,7 @@ def sha(path):
     return h.hexdigest()
 
 
-def build_coast():
+def build_coast(bounds=(-9.47,51.43,-9.30,51.52)):
     """OSM coastline segments, polygonised land only where edges close.
 
     Never infer a precise coastline from the coarse EMODnet raster. EMODnet
@@ -77,11 +77,11 @@ def build_coast():
         for e in source.get('elements',[]):
             if e.get('tags',{}).get('natural')=='coastline' and len(e.get('geometry',[]))>1:
                 line=LineString([(p['lon'],p['lat']) for p in e['geometry']])
-                if line.intersects(box(-9.47,51.43,-9.30,51.52)):
+                if line.intersects(box(*bounds)):
                     ways.setdefault(e['id'],line)
     lines=[transform(TO_ITM,p) for p in ways.values()]
     if not lines: raise ValueError('No OSM coastline in the local source cache')
-    domain=transform(TO_ITM,box(-9.47,51.43,-9.30,51.52))
+    domain=transform(TO_ITM,box(*bounds))
     coast=unary_union(lines).intersection(domain)
     faces=list(polygonize(unary_union([coast,domain.boundary])))
     # OSM coastal ways run with land to their left. Classify faces with the

@@ -25,7 +25,7 @@ try{
  await page.locator('#focus-cork').click();await page.clock.runFor(1500);await page.locator('#map').screenshot({path:path.join(out,'evidence_map.png')});
  await page.locator('#wave-diagram').screenshot({path:path.join(out,'wave_concept.png')});
  await page.locator('#decision-brief').screenshot({path:path.join(out,'decision_brief.png')});
- await page.locator('#decision-workflow').screenshot({path:path.join(out,'practical_workflow.png')});
+ await page.locator('.workflow-strip').screenshot({path:path.join(out,'practical_workflow.png')});
  await page.locator('#show-restoration').click();await page.clock.runFor(1500);await page.locator('#map').screenshot({path:path.join(out,'survey_map.png')});
  await page.locator('.biodiversity-layout').screenshot({path:path.join(out,'biodiversity.png')});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

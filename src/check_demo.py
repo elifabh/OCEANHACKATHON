@@ -35,7 +35,7 @@ def main():
             if not (base/name).is_file() or sha(base/name)!=expected:mismatch.append(name)
     rows.append({'name':'source_input_output_consistency','status':'FAIL' if mismatch else 'PASS','mismatches':mismatch})
     print('Build consistency:',rows[-1]['status'])
-    command('numerical_tests',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_coastal.py','-v'])
+    command('numerical_tests',[sys.executable,'-m','unittest','discover','-s','tests','-p','test_*.py','-v'])
     command('localhost_smoke',[sys.executable,'src/launch_demo.py','--smoke','--no-browser'])
     runtime=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node'
     node=shutil.which('node') or str(runtime/'bin/node.exe')
@@ -43,6 +43,7 @@ def main():
     if Path(node).is_file() and (packages/'playwright').exists():
         command('browser_tests',[node,'tests/browser_smoke.mjs',str(packages)])
         command('story_browser_tests',[node,'tests/browser_story.mjs'])
+        command('assessment_browser_tests',[node,'tests/browser_assessment.mjs'])
     else:
         rows.append({'name':'browser_tests','status':'BLOCKED','reason':'Existing Node/Playwright runtime unavailable. No installation attempted.'})
     report={'checked_utc':datetime.now(timezone.utc).isoformat(),'build_id':manifest['build_id'],'checks':rows,

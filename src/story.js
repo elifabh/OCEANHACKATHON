@@ -66,14 +66,14 @@ const steps=[
  {target:'explore',title:'2 / Make the evidence visible',copy:'Blue is a satellite intertidal proxy. Green is modelled subtidal habitat. Purple is historical survey evidence.',run:()=>{$('focus-cork').click();}},
  {target:'condition',title:'3 / Describe life and condition',copy:(d.biodiversity?d.biodiversity.present+' of '+d.biodiversity.total:'Unavailable')+' reference taxa in regional records. Environmental indicators do not establish a measured loss of this bed.',run:()=>{}},
  {target:'protection',title:'4 / Test a physical illustration',copy:fmt(d.physical.height_fraction)+' height reduction inside assumed habitat. Wave direction, depth and local validation matter.',run:()=>{$('with-kelp').click();}},
- {target:'cost-form',title:'5 / Question the euro assumptions',copy:'Change the assumed width or cost fraction. Annualised capital is not annual savings. Actual avoided damage remains not quantified.',run:()=>{}},
- {target:'restoration',title:'6 / Choose the next field check',copy:'Use a selected Cork screening brief to plan habitat verification and paired wave measurements. Restoration remains an investigation.',run:()=>decision(selectedGroup)}
+ {target:'cost-form',title:'5 / Question the euro assumptions',copy:'Change candidate-coast cost assumptions. Annualised capital is not annual savings. Actual avoided damage remains not quantified.',run:()=>{}},
+ {target:'restoration',title:'6 / Choose the next field check',copy:'Generate an assessment report with the map, current calculations and next field checks. Restoration remains an investigation.',run:()=>decision(selectedGroup)}
 ];
 let active=false,paused=false,index=0,timer=null,endsAt=0;
 function showStep(){const step=steps[index];text('tour-progress','GUIDED TOUR / '+(index+1)+' OF '+steps.length);text('tour-title',step.title);text('tour-copy',step.copy);step.run();scroll(step.target);text('tour-next',index===steps.length-1?'Finish':'Next');endsAt=Date.now()+10000;}
 function stopTour(){active=false;clearInterval(timer);timer=null;$('tour-panel').hidden=true;clearTimeout(zoomTimer);$('start-tour').focus({preventScroll:true});}
 function next(){if(index===steps.length-1){stopTour();return;}index++;showStep();}
-function startTour(){stopTour();active=true;paused=false;index=0;$('tour-panel').hidden=false;text('tour-pause','Pause');showStep();timer=setInterval(()=>{if(!active||paused)return;const remaining=endsAt-Date.now();$('tour-bar').style.width=Math.max(0,remaining/100)+'%';if(remaining<=0)next();},100);}
+function startTour(){stopTour();if(window.ShieldAssessment)ShieldAssessment.exit();$('focus-pilot').click();$('cc-reset').click();active=true;paused=false;index=0;$('tour-panel').hidden=false;text('tour-pause','Pause');showStep();timer=setInterval(()=>{if(!active||paused)return;const remaining=endsAt-Date.now();$('tour-bar').style.width=Math.max(0,remaining/100)+'%';if(remaining<=0)next();},100);}
 $('start-tour').onclick=startTour;$('tour-stop').onclick=stopTour;$('tour-next').onclick=next;
 $('tour-pause').onclick=()=>{paused=!paused;text('tour-pause',paused?'Resume':'Pause');if(!paused)endsAt=Date.now()+10000;};
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&active)stopTour();});

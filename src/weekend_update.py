@@ -2,7 +2,7 @@
 import argparse, hashlib, json, subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'outputs/presentations_final_20261014'
+OUT=ROOT/'outputs/presentations_visual_v2_20261014'
 BASE=OUT/'PRE_WEEKEND_SOURCE_BASELINE.json'
 def snapshot():
     files=list((ROOT/'src').rglob('*'))+list((ROOT/'tests').rglob('*'))+list(ROOT.glob('*.bat'))

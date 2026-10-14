@@ -1,4 +1,14 @@
-# Current guidance update 14 October 2026
+# Current visual and functional revision, 14 October 2026
+
+All user requirements remain active, including the final visual revision and the complete scientific assessment workflow. Current app build: `d493f82c1a12`. Launch `START_DEMO.bat`; the primary jury path is `START_JURY_PRESENTATION.bat`. Final delivery: `outputs/presentations_visual_v2_20261014/`, with `SUNDAY_3_MINUTES_FINAL_VERIFIED.pptx`, `SUNDAY_5_MINUTES_FINAL_VERIFIED.pptx`, `FRIDAY_INVITATION.pptx` and an offline HTML presentation that plays continuous real video inside the page. Earlier delivery folders remain historical.
+
+`src/parametric_assessment.py` builds geographic ray/scenario inputs; `src/parametric.js` calculates browser scenarios; `src/assessment.js` integrates selection, evidence, assumptions and a three-page offline report. Changing the source requires REBUILD_DEMO and CHECK_DEMO. Selected group 1 differs from the whole pilot: baseline within-habitat height/energy reduction is 8.56%/16.03% for group 1 versus 5.85%/11.09% for the whole pilot. These are conditional model outputs, not observed protection. Candidate shoreline length is computed geometrically, not an assumed protected frontage. Economic cost share is an independent scenario assumption, never the wave-energy reduction used as a causal cost-saving factor. Avoided damage and ecosystem-service value remain null, not zero.
+
+The Cork comparison includes the corrected historical Laminaria evidence at Cape Clear. All 11 sampled incoming straight paths there cross land. No screened site establishes a validated habitat-wave-asset benefit chain. Present-day kelp, measured decline and calibrated restoration efficacy remain unconfirmed. Do not reinstate the old blanket zero or silently pass the failed external habitat test.
+
+Windows PowerPoint 16 opens/renders all final slides. Its native movie probe did not advance despite correct embedded bytes and manual Play. Labelled native frame animations were rendered and the actual slideshow advanced through the film scene into the final scene. The primary HTML path passed complete real-time offline 180.2/300.2-second rehearsals. Speaker pace still requires a human rehearsal. Sources, limitations and a requirement crosswalk accompany the delivery. `weekend_update.py` now compares against this revision's pre-event source baseline, not the superseded preparation baseline.
+
+## Earlier guidance update, retained for provenance
 
 The final user-approved direction is `CODEX_FINAL_OCEANHACKATHON_STORY_UX_PITCH_IMPLEMENTATION.md`, dated 14 October. It supersedes prior instructions. The application now has four journeys, three distinct Irish context roles, an offline guided tour and a selected-area screening brief. `src/story_evidence.py` provides whitelisted context without changing the physical model. Source assets and their licences are in `src/assets/story/credits.json`. Use the existing launchers. Final media is under `outputs/presentations_final_20261014/`; current test evidence is under `outputs/final_20261014/`.
 

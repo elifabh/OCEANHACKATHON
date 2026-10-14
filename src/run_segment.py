@@ -1,8 +1,7 @@
 """Reusable local screening entry point. No habitat input means no estimate.
 
 Example: python src/run_segment.py --site mizen_outer
-Another assessed footprint: --site inner_roaringwater --bearing 33
-The latter bearing is a declared scenario, requiring local wave calibration.
+Species and exposure suitability must pass before the laboratory model is used.
 """
 from __future__ import annotations
 import argparse
@@ -33,7 +32,9 @@ def run_segment(site, *, threshold=None, bearing=None, water_level=0, prediction
         'threshold':threshold,'height_fraction':None,'energy_fraction':None,
         'avoided_damage_eur':None,'habitat_validated':False,'local_wave_calibrated':False,
         'note':'External habitat validation failed. No inference of habitat absence, zero protection or economic benefit.'}
-    if len(eligible):
+    if site=='inner_roaringwater':
+        result.update(status='SPECIES_AND_EXPOSURE_MISMATCH',note='Available inner-bay reference describes Saccharina/Saccorhiza in sheltered conditions. L. hyperborea laboratory attenuation coefficients are not transferable without validation.')
+    elif len(eligible):
         result['status']='LOCAL_INCIDENT_WAVE_INPUT_REQUIRED'
         if bearing is not None:
             bearing=finite(bearing,'bearing')%360
