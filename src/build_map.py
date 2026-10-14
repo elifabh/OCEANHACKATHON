@@ -581,12 +581,13 @@ def main() -> None:
     payload['parametric'] = build_parametric(payload)
     payload['cork_screen'] = cork_screen()
     payload['build_date'] = '2026-10-14'
+    payload['presentation_scenario'] = json.loads((ROOT/'src/presentation_scenario.json').read_text(encoding='utf-8'))
     payload['visual_credits'] = json.loads((ROOT/'src/assets/story/credits.json').read_text(encoding='utf-8'))
     payload['ireland_context'] = json.loads((ROOT/'src/assets/story/ireland-context.geojson').read_text(encoding='utf-8'))
     payload["sources"] = json.loads((ROOT/"src/data_sources.json").read_text(encoding="utf-8"))
     if payload["biodiversity"]:
         payload["biodiversity"]["taxa"] = pd.read_csv(ROOT/"outputs/indicator_match.csv").fillna("").to_dict("records")
-    source_files = ["src/build_map.py", "src/common.py", "src/evidence_pipeline.py", "src/coastal_physics.py", "src/coastal_cost_calculator.py", "src/run_segment.py", "src/map_template.html", "src/app.js", "src/app.css", "src/data_sources.json", "src/story_evidence.py", "src/story.js", "src/atlas.css", "src/assessment.js", "src/parametric.js", "src/parametric_assessment.py", "src/screen_cape_clear.py"]
+    source_files = ["src/build_map.py", "src/common.py", "src/evidence_pipeline.py", "src/coastal_physics.py", "src/coastal_cost_calculator.py", "src/run_segment.py", "src/map_template.html", "src/app.js", "src/app.css", "src/data_sources.json", "src/story_evidence.py", "src/story.js", "src/atlas.css", "src/assessment.js", "src/parametric.js", "src/parametric_assessment.py", "src/screen_cape_clear.py", "src/presentation_scenario.json"]
     from evidence_pipeline import OSM_CACHE,OSM_COAST_COMPLETE,NPWS,AUDIT
     inputs=[ROOT/p for p in ["outputs/valuation/step3b2_flood_check.gpkg", "outputs/model/model_multisite_report.json", "outputs/model/suitability_multisite_predictions.csv", "outputs/indicator_match.csv", "outputs/indicator_site_scores.csv", "outputs/coastal_cost_calculation/calculation.json", "data/cmems/ibi_wav_sherkin.nc", "data/emodnet/exposure_sherkin_baltimore.tif", "outputs/restoration/restoration_candidates.geojson", "outputs/thumbnails/sherkin_baltimore__2022-07-14__T29UMT.png", "outputs/france/france_chain.json", "outputs/france/france_valuation.json", "outputs/valuation/nutrient_removal.json"]]
     inputs += list((ROOT/'outputs/visual_v2_20261014/inputs').glob('*.json'))

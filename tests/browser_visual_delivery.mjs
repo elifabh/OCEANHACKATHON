@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';import path from 'node:path';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
 const root=process.cwd(),require=createRequire(path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/package.json')),{chromium}=require('playwright');
-const out=path.join(root,'outputs/presentations_visual_v2_20261014'),qa=path.join(root,'work/visual_v2/browser-qa');await fs.mkdir(qa,{recursive:true});
+const out=path.join(root,'outputs/jury_release_20261014'),qa=path.join(root,'work/jury_release_20261014/browser-qa');await fs.mkdir(qa,{recursive:true});
 const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',args:['--disable-background-timer-throttling','--disable-renderer-backgrounding']});
 const checks=[],errors=[];
 async function page(){const context=await browser.newContext({viewport:{width:1600,height:900}});await context.setOffline(true);const p=await context.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(pathToFileURL(path.join(out,'OFFLINE_PRESENTATION.html')).href);return p;}

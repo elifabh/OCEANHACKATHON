@@ -3,10 +3,10 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 import json,re
 root=Path(__file__).resolve().parents[1]
-ev=json.loads((root/'outputs/presentations_visual_v2_20261014/EVIDENCE_TABLE.json').read_text())
+ev=json.loads((root/'outputs/jury_release_20261014/EVIDENCE_TABLE.json').read_text())
 height=round(100*(1-ev['model']['height_fraction']),6)
 for variant in ['compact','extended','friday']:
-    source=root/'work/visual_v2'/f'{variant}-native.pptx'
+    source=root/'work/jury_release_20261014'/f'{variant}-native.pptx'
     with ZipFile(source) as zin, ZipFile(source.with_name(f'{variant}-ready.pptx'),'w',ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             data=zin.read(item.filename)

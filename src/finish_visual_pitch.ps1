@@ -1,8 +1,8 @@
 param([switch]$SkipMovieProbe)
 $ErrorActionPreference='Stop'
 $projectRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$pitchWork=Join-Path $projectRoot 'work/visual_v2'
-$pitchOut=Join-Path $projectRoot 'outputs/presentations_visual_v2_20261014'
+$pitchWork=Join-Path $projectRoot 'work/jury_release_20261014'
+$pitchOut=Join-Path $projectRoot 'outputs/jury_release_20261014'
 $timing=Get-Content -LiteralPath (Join-Path $pitchWork 'timing.json') -Raw | ConvertFrom-Json
 $app=New-Object -ComObject PowerPoint.Application
 $initialCount=$app.Presentations.Count
@@ -25,7 +25,7 @@ try {
    $show=$pres.SlideShowSettings.Run();Start-Sleep -Milliseconds 700
    $player=$show.View.Player($clip.Id);$player.Play();$samples=@()
    for($k=0;$k -lt 5;$k++){Start-Sleep -Milliseconds 1000;$samples+=@{second=$k+1;position_ms=$player.CurrentPosition;state=$player.State}}
-   $maxPosition=($samples | Measure-Object position_ms -Maximum).Maximum
+   $maxPosition=($samples | ForEach-Object { $_.position_ms } | Measure-Object -Maximum).Maximum
    $probeResult=@{powerpoint_version=$app.Version;status=if($maxPosition -gt 1500){'PASS'}else{'FAIL_PLAYER_DID_NOT_ADVANCE'};saved_and_reopened=$true;visible_window=$true;play_invoked=$true;length_ms=$clip.MediaFormat.Length;samples=$samples;source_file=$movie;package=$probe;action='No codec installation or registry changes. Final PPTX uses a labelled native frame sequence; primary offline HTML uses the actual continuous movie.'}
    $probeResult | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $pitchWork 'movie-probe.json') -Encoding UTF8
   } finally {if($null -ne $show){try{$show.View.Exit()}catch{}};if($null -ne $pres){try{$pres.Saved=-1;$pres.Close()}catch{}}}
@@ -33,7 +33,7 @@ try {
  foreach($variant in @('compact','extended','friday')) {
   $pres=$null
   try {
-   $pres=$app.Presentations.Open((Join-Path $pitchWork ($variant+'-draft-v2.pptx')),0,0,0)
+   $pres=$app.Presentations.Open((Join-Path $pitchWork ($variant+'-draft-clean.pptx')),0,0,0)
    $render=Join-Path $pitchWork ('render-'+$variant)
    if(-not(Test-Path -LiteralPath $render)){New-Item -ItemType Directory -Path $render | Out-Null}
    $duration=0;$notesCount=0;$effects=0

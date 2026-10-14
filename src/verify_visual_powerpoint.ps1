@@ -1,13 +1,13 @@
 param([switch]$Final)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$work=Join-Path $root 'work/visual_v2';$out=Join-Path $root 'outputs/presentations_visual_v2_20261014'
+$work=Join-Path $root 'work/jury_release_20261014';$out=Join-Path $root 'outputs/jury_release_20261014'
 $app=New-Object -ComObject PowerPoint.Application;$initialCount=$app.Presentations.Count;$pres=$null
 try {
  if($Final){
   $rows=@()
   foreach($v in @('compact','extended','friday')){
-   $name=if($v -eq 'compact'){'SUNDAY_3_MINUTES_FINAL_VERIFIED'}elseif($v -eq 'extended'){'SUNDAY_5_MINUTES_FINAL_VERIFIED'}else{'FRIDAY_INVITATION'}
+   $name=if($v -eq 'compact'){'SUNDAY_3_MINUTES_FINAL'}elseif($v -eq 'extended'){'SUNDAY_5_MINUTES_FINAL'}else{'FRIDAY_INVITATION'}
    $pres=$app.Presentations.Open((Join-Path $out ($name+'.pptx')),-1,0,0)
    $dir=Join-Path $work ('final-render-'+$v);New-Item -ItemType Directory -Force -Path $dir | Out-Null
    for($i=1;$i -le $pres.Slides.Count;$i++){$pres.Slides.Item($i).Export((Join-Path $dir ('slide-'+$i+'.png')),'PNG',1920,1080)}
