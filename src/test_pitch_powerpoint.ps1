@@ -40,6 +40,3 @@ try {
  $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $qa 'powerpoint_rehearsal.json') -Encoding UTF8
  $report | ConvertTo-Json -Depth 6
 } finally {try{if($initialCount -eq 0 -and $app.Presentations.Count -eq 0){$app.Quit()}}catch{};[void][Runtime.InteropServices.Marshal]::ReleaseComObject($app)}
-
-
-

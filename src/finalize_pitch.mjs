@@ -10,6 +10,3 @@ for(const [variant,name,count] of [['compact','SUNDAY_3_MINUTES_FINAL',6],['exte
  const result=await finalizePresentation({workspaceDir:root,candidatePath:path.join(work,variant+'-ready.pptx'),finalPath:path.join(out,outputName+'.pptx'),pythonExecutable:path.join(rt,'python/python.exe'),integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit'],explicitTotalSlideCount:count,requiredNativeTableOwnerSlides:[],requiredNativeChartOwnerSlides:count===6?[4]:[],materializeLiteralChartWorkbooks:true,fontPolicy:{basis:'design',families:['Segoe UI','Georgia']},verifyArtifactToolImport:true,receiptPath:path.join(work,outputName+'.delivery.validation.json')});
  console.log(JSON.stringify({variant,file:outputName+'.pptx',status:result.status??'completed'}));
 }
-
-
-

@@ -48,7 +48,3 @@ for(const name of ['SUNDAY_3_MINUTES.md','SUNDAY_5_MINUTES.md','PRONUNCIATION_AN
 const report={build_id:d.build_id,friday_words:count(content.friday),compact_spoken_words:content.compact.reduce((n,s)=>n+count(s),0),extended_spoken_words:content.extended.reduce((n,s)=>n+count(s),0),compact_seconds:timing.compact.reduce((a,b)=>a+b),extended_seconds:timing.extended.reduce((a,b)=>a+b),scenes:6,qa:content.qa.length};
 if(report.friday_words<220||report.friday_words>260)throw new Error('Friday word budget: '+report.friday_words);
 await fs.writeFile(path.join(work,'content_checks.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
-
-
-
-

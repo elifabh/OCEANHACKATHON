@@ -70,4 +70,3 @@ try{
  const bytes=await fs.readFile(file);const manifest={file:path.basename(file),sha256:crypto.createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length,build_id:d.build_id,duration_seconds:duration,frames:duration*20,fps:20,audio:'None; deliberate silent screen recording with burned-in English captions',method:'Chrome DevTools Page.startScreencast of the real localhost application, sampled in real time and encoded as H.264. No UI values or evidence replaced for recording.',actions,uncaught_errors:errors};
  await fs.writeFile(path.join(out,path.basename(file)+'.json'),JSON.stringify(manifest,null,2));console.log(JSON.stringify(manifest,null,2));
 }finally{if(encoder&&!encoder.killed)encoder.stdin?.end();if(browser)await browser.close();server.kill();}
-

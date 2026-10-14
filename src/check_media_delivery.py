@@ -34,4 +34,3 @@ for minutes,seconds,frames in [(3,30,8),(5,55,9)]:
     results.append({'file':ppt.name,'status':'PASS','slides':6,'embedded_movie_sha256':movie_hash,'default_native_frames':frames,'timing_budget_seconds':minutes*60,'native_chart_matches_evidence':True})
 (ROOT/'outputs/final_20261014/qa/media_package_report.json').write_text(json.dumps({'status':'PASS','build_id':d['build_id'],'checks':results},indent=2))
 print(json.dumps(results,indent=2))
-

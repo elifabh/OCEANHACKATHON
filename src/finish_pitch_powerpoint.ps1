@@ -124,5 +124,3 @@ try {
  $checks | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $pitchWork 'powerpoint-native-checks.json') -Encoding UTF8
  $checks | ConvertTo-Json -Depth 5
 } finally {if($initialCount -eq 0 -and $app.Presentations.Count -eq 0){$app.Quit()};[void][Runtime.InteropServices.Marshal]::ReleaseComObject($app)}
-
-
