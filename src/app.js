@@ -38,6 +38,7 @@ function waveGraphic(withKelp){
 $('with-kelp').onclick=()=>waveGraphic(true);$('without-kelp').onclick=()=>waveGraphic(false);waveGraphic(true);
 
 function inspectGroup(props){
+ window.dispatchEvent(new CustomEvent('shield:selection',{detail:props?.group_id||1}));
  const all=!props, area=all?site.area_ha:props.area_ha, h=all?physical.height_fraction:props.height_fraction;
  text('area-title',all?'Sherkin model pilot':'Model group '+props.group_id);
  text('area-status','MODELLED · UNVALIDATED');

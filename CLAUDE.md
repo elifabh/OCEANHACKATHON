@@ -1,4 +1,10 @@
-# Current guidance update 13 October 2026
+# Current guidance update 14 October 2026
+
+The final user-approved direction is `CODEX_FINAL_OCEANHACKATHON_STORY_UX_PITCH_IMPLEMENTATION.md`, dated 14 October. It supersedes prior instructions. The application now has four journeys, three distinct Irish context roles, an offline guided tour and a selected-area screening brief. `src/story_evidence.py` provides whitelisted context without changing the physical model. Source assets and their licences are in `src/assets/story/credits.json`. Use the existing launchers. Final media is under `outputs/presentations_final_20261014/`; current test evidence is under `outputs/final_20261014/`.
+
+The 30- and 55-second MP4s are actual browser recordings. Embedded video playback failed in this installed PowerPoint despite H.264/AAC and WMV compatibility attempts. The delivered native presentation uses explicitly labelled, timed frames from the real recordings as its default fallback; continuous films play in the offline HTML companion. Do not claim native movie playback passed. Preserve the scientific boundaries below and record actual weekend contributions only after they happen.
+
+## Previous delivery context
 
 The user-provided `docs/overnight_20261013/MASTER_BRIEF.md` replaces older master instructions. The text below is retained as historical provenance, not as authority to preserve disproved results. In particular, the old blanket coastal EUR 0 conclusion is withdrawn: actual avoided damage is NOT QUANTIFIED. EPA macroalgae status cannot establish no kelp decline. Model validation has not passed. The NPWS SSCO comparison requires restoration classes to be treated as survey/revisit priorities. Source calculations and the current UI are built with `REBUILD_DEMO.bat`; do not apply old HTML patch scripts. Original raw data and old research outputs remain intact.
 

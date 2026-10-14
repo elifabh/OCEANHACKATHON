@@ -1,4 +1,12 @@
-# Current delivery guidance — 13 October 2026
+# Presentation and story additions — 14 October 2026
+
+No Python environment was reinstalled. Runtime-only authoring dependencies are bundled Node.js 24.19.0, Playwright 1.62.1 (Apache-2.0), Sharp 0.35.5 (Apache-2.0; its bundled libvips retains its own LGPL terms), and the bundled OpenAI Artifact Tool 2.8.89 (authoring runtime, not shipped as application code). Installed Microsoft PowerPoint 16.0 is proprietary desktop software used for editing, rendering and media tests. Google Chrome 155 is the installed browser used to record and test the app.
+
+A portable FFmpeg 7.1 essentials executable was extracted from the verified `imageio-ffmpeg` 0.6.0 Windows wheel for local recording, without installing a package. This binary enables GPL components including libx264. It stays in `work/story_20261014/ffmpeg.exe`; its wheel and binary SHA256 values and bundled licence notices are retained alongside it. The delivered MP4 files do not contain the encoder. Do not redistribute the binary without meeting its licence requirements.
+
+Story assets: Joe Stump's Sherkin photograph (CC BY 2.0), Xavier Caisey / Ifremer's Molène kelp photograph (CC BY 4.0, labelled France context), and Natural Earth's 1:50m generalised country geometry (public domain). Exact sources, licence links, changes and hashes are recorded in `src/assets/story/credits.json` and the presentation asset register. These assets add no new measured habitat or monetary result.
+
+# Previous delivery guidance — 13 October 2026
 
 The rebuilt local application uses the source register in `src/data_sources.json` and the SHA256 build manifest in `outputs/map/build_manifest.json`. The historical sections below remain for audit.
 

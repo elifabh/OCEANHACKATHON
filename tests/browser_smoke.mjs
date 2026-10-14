@@ -7,7 +7,7 @@ const root=process.cwd();
 const packages=process.argv[2]||path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules');
 const require=createRequire(path.join(packages,'package.json'));
 const {chromium}=require('playwright');
-const qa=path.join(root,'outputs/overnight_20261013/qa');await fs.mkdir(qa,{recursive:true});
+const qa=path.join(root,'outputs/final_20261014/qa');await fs.mkdir(qa,{recursive:true});
 const server=spawn(path.join(root,'.venv/Scripts/python.exe'),['src/launch_demo.py','--no-browser','--port','8820'],{cwd:root,windowsHide:true});
 let output='';server.stdout.on('data',b=>output+=b.toString());server.stderr.on('data',b=>output+=b.toString());
 let browser;const checks=[];const errors=[];const unexpectedRequests=[];

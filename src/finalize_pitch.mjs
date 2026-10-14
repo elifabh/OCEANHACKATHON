@@ -1,0 +1,15 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {pathToFileURL} from 'node:url';
+const root=process.cwd(),rt=path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies'),skill='C:/Users/Elif/.codex/plugins/cache/openai-primary-runtime/presentations/26.1007.11041/skills/presentations';process.env.RUNTIME_NODE_MODULES=path.join(rt,'node/node_modules');
+const {finalizePresentation}=await import(pathToFileURL(path.join(skill,'container_tools/artifact_tool_utils.mjs')).href);
+const work=path.join(root,'work/story_20261014'),out=path.join(root,'outputs/presentations_final_20261014');
+const revision=process.argv[2]||'';
+if(revision&&!/^[a-zA-Z0-9_-]+$/.test(revision))throw new Error('Use a short alphanumeric revision label.');
+for(const [variant,name,count] of [['compact','SUNDAY_3_MINUTES_FINAL',6],['extended','SUNDAY_5_MINUTES_FINAL',6],['friday','FRIDAY_INVITATION',1]]){
+ const outputName=name+(revision?'_'+revision:'');
+ if(variant==='friday'){try{await fs.access(path.join(out,name+'.pptx'));continue;}catch{}}
+ const result=await finalizePresentation({workspaceDir:root,candidatePath:path.join(work,variant+'-ready.pptx'),finalPath:path.join(out,outputName+'.pptx'),pythonExecutable:path.join(rt,'python/python.exe'),integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit'],explicitTotalSlideCount:count,requiredNativeTableOwnerSlides:[],requiredNativeChartOwnerSlides:count===6?[4]:[],materializeLiteralChartWorkbooks:true,fontPolicy:{basis:'design',families:['Segoe UI','Georgia']},verifyArtifactToolImport:true,receiptPath:path.join(work,outputName+'.delivery.validation.json')});
+ console.log(JSON.stringify({variant,file:outputName+'.pptx',status:result.status??'completed'}));
+}
+
+
+

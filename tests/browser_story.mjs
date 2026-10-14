@@ -1,0 +1,37 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {createRequire} from 'node:module';import {spawn} from 'node:child_process';import assert from 'node:assert/strict';
+const root=process.cwd(),base=path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules'),require=createRequire(path.join(base,'package.json')),{chromium}=require('playwright');
+const out=path.join(root,'outputs/final_20261014/qa');await fs.mkdir(out,{recursive:true});
+const server=spawn(path.join(root,'.venv/Scripts/python.exe'),['src/launch_demo.py','--no-browser','--port','8840'],{windowsHide:true});let log='';server.stdout.on('data',b=>log+=b);server.stderr.on('data',b=>log+=b);
+let browser;const checks=[],errors=[];const pass=name=>checks.push({name,status:'PASS'});
+try{
+ for(let i=0;i<100&&!log.includes('Ocean Hackathon demo:');i++)await new Promise(r=>setTimeout(r,100));
+ const url=log.match(/http:\/\/127\.0\.0\.1:\d+\/index\.html/)?.[0];assert.ok(url,log);
+ browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+ const context=await browser.newContext({viewport:{width:1600,height:1000},reducedMotion:'reduce',acceptDownloads:true});await context.route('https://**/*',r=>r.abort());
+ const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>window.ShieldStory);
+ const ids=await page.locator('nav a').evaluateAll(a=>a.map(x=>x.hash));assert.deepEqual(ids,['#explore','#condition','#protection','#restoration']);
+ for(const id of ids){await page.locator('nav a[href="'+id+'"]').click();assert.ok(await page.locator(id).isVisible());}pass('Four journeys and working navigation');
+ await page.locator('[data-site="galway"]').click();assert.match(await page.locator('#site-calculated').textContent(),/older grid-axis/);assert.match(await page.locator('#site-limit').textContent(),/Not independent/);
+ await page.locator('[data-site="clare"]').click();assert.match(await page.locator('#site-evidence').textContent(),/Kilkee/);assert.match(await page.locator('#site-calculated').textContent(),/No local/);
+ await page.locator('[data-site="cork"]').click();await page.locator('#places').screenshot({path:path.join(out,'ireland_places.png')});pass('Three Irish places retain distinct evidence roles');
+ await page.locator('#enter-cork').click();assert.equal(await page.evaluate(()=>window.ShieldStory.getState().selectedSite),'cork');pass('Ireland to Cork interaction');
+ await page.locator('#start-tour').click();assert.ok(await page.locator('#tour-panel').isVisible());await page.locator('#tour-pause').click();assert.equal(await page.evaluate(()=>window.ShieldStory.getState().paused),true);await page.locator('#tour-next').click();assert.equal(await page.evaluate(()=>window.ShieldStory.getState().index),1);await page.keyboard.press('Escape');assert.ok(await page.locator('#tour-panel').isHidden());pass('Guided tour pause, next and Escape stop');
+ await page.clock.install();await page.locator('#start-tour').click();await page.clock.runFor(60100);assert.ok(await page.locator('#tour-panel').isHidden());pass('Guided tour finishes after six ten-second steps');
+ assert.ok(await page.locator('#wave-motion').isDisabled());assert.equal(await page.locator('#kelp-drawing').evaluate(e=>getComputedStyle(e).animationName),'none');pass('Reduced motion disables wave and animated scrolling');
+ await page.locator('#select-decision').click();assert.match(await page.locator('#area-title').textContent(),/group 1/i);
+ const downloadPromise=page.waitForEvent('download');await page.locator('#download-decision').click();const dl=await downloadPromise;const brief=JSON.parse(await fs.readFile(await dl.path(),'utf8'));assert.equal(brief.actual_avoided_damage_eur,null);assert.match(brief.status,/SCREENING/);assert.ok(brief.group.group_id);pass('Selected area produces a real screening brief with unknown damage');
+ assert.match(await page.locator('#model-construction-note').textContent(),/Different model constructions/);assert.match(await page.locator('label[for="cc-effect"]').textContent(),/User-assumed/);pass('Physical and economic quantities visibly separate');
+ await page.locator('#overview').scrollIntoViewIfNeeded();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(out,'story_desktop.png')});
+ await page.locator('#focus-cork').click();await page.clock.runFor(1500);await page.locator('#map').screenshot({path:path.join(out,'evidence_map.png')});
+ await page.locator('#wave-diagram').screenshot({path:path.join(out,'wave_concept.png')});
+ await page.locator('#decision-brief').screenshot({path:path.join(out,'decision_brief.png')});
+ await page.locator('#decision-workflow').screenshot({path:path.join(out,'practical_workflow.png')});
+ await page.locator('#show-restoration').click();await page.clock.runFor(1500);await page.locator('#map').screenshot({path:path.join(out,'survey_map.png')});
+ await page.locator('.biodiversity-layout').screenshot({path:path.join(out,'biodiversity.png')});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+ await page.setViewportSize({width:390,height:844});await page.goto(url,{waitUntil:'networkidle'});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+ await page.screenshot({path:path.join(out,'story_mobile.png')});await page.locator('#start-tour').click();assert.ok(await page.locator('#tour-stop').isVisible());await page.locator('#tour-stop').click();pass('390 px layout and tour controls');
+ await page.reload({waitUntil:'networkidle'});await context.setOffline(true);await page.locator('#start-tour').click();await page.locator('#tour-next').click();assert.ok(await page.evaluate(()=>window.CoastalCostCalculator.getResult()));await page.locator('#tour-stop').click();pass('Offline tour and scientific calculator');
+ assert.deepEqual(errors,[]);pass('No uncaught JavaScript errors');
+ await fs.writeFile(path.join(out,'story_browser_report.json'),JSON.stringify({status:'PASS',build_id:await page.evaluate(()=>window.ShieldApp.buildId),checks,errors},null,2));console.log(JSON.stringify({status:'PASS',checks},null,2));
+}catch(e){await fs.writeFile(path.join(out,'story_browser_report.json'),JSON.stringify({status:'FAIL',checks,errors,error:String(e)},null,2));console.error(e);process.exitCode=1;}finally{if(browser)await browser.close();server.kill();}
