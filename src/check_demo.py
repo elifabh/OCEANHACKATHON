@@ -10,7 +10,7 @@ import sys
 from datetime import datetime,timezone
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'outputs/final_20261014'
+OUT=ROOT/'outputs/final_delivery_20261014/qa'
 
 
 def sha(p):
@@ -41,9 +41,8 @@ def main():
     node=shutil.which('node') or str(runtime/'bin/node.exe')
     packages=runtime/'node_modules'
     if Path(node).is_file() and (packages/'playwright').exists():
-        command('browser_tests',[node,'tests/browser_smoke.mjs',str(packages)])
-        command('story_browser_tests',[node,'tests/browser_story.mjs'])
-        command('assessment_browser_tests',[node,'tests/browser_assessment.mjs'])
+        command('workspace_browser_tests',[node,'tests/browser_workspace.mjs'])
+        command('selected_report_browser_tests',[node,'tests/browser_report.mjs'])
     else:
         rows.append({'name':'browser_tests','status':'BLOCKED','reason':'Existing Node/Playwright runtime unavailable. No installation attempted.'})
     report={'checked_utc':datetime.now(timezone.utc).isoformat(),'build_id':manifest['build_id'],'checks':rows,

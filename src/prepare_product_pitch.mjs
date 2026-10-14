@@ -1,0 +1,10 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
+const root=process.cwd(),work=path.join(root,'work/product_pitch'),out=path.join(root,'outputs/final_delivery_20261014'),require=createRequire(path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/package.json'));
+const {chromium}=require('playwright'),sharp=require('sharp');await fs.mkdir(work,{recursive:true});await fs.mkdir(path.join(out,'presentation_assets'),{recursive:true});
+const b=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+try{const c=await b.newContext({viewport:{width:1920,height:1080},reducedMotion:'reduce'});await c.route('https://**/*',r=>r.abort());const p=await c.newPage();await p.goto(pathToFileURL(path.join(root,'outputs/map/index.html')).href);await p.waitForFunction(()=>window.ShieldWorkspace);
+for(const [stage,name] of [[0,'selection'],[1,'habitat'],[2,'protection'],[3,'economics'],[4,'biodiversity'],[5,'export']]){await p.locator('button[data-stage="'+stage+'"]').click();await p.waitForTimeout(250);await p.screenshot({path:path.join(out,'presentation_assets',name+'.png')});}
+for(const kind of ['all','documented','potential','priorities']){const svg=await p.evaluate(k=>ShieldWorkspace.mapSVG(k==='priorities'?'priority':k),kind);await fs.writeFile(path.join(work,'map-'+kind+'.svg'),svg);await sharp(Buffer.from(svg)).resize({width:1400}).png().toFile(path.join(out,'presentation_assets','map-'+kind+'.png'));}
+await p.locator('#generate-report').click();await p.frameLocator('#report-preview').locator('[data-section="12"]').waitFor();await p.screenshot({path:path.join(out,'presentation_assets','report-preview.png')});
+await fs.writeFile(path.join(work,'capture.json'),JSON.stringify({build_id:await p.evaluate(()=>ShieldApp.evidence.build_id),captured_utc:new Date().toISOString(),type:'Real application stills before video production'},null,2));
+}finally{await b.close();}

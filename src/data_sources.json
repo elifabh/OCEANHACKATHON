@@ -168,5 +168,15 @@
     "url": "https://doi.org/10.17031/frdvov",
     "attribution": "National Museums Northern Ireland (NMNI) (2021): Marine Recorder Snapshot extract of surveys entered by National Museums Northern Ireland (NMNI). v2.1. Marine Biological Association. Dataset/Samplingevent. https://doi.org/10.17031/frdvov",
     "limits": "The local indicator uses co-located survey records; no contemporary habitat condition is inferred."
+  },
+  {
+    "id": "clarity",
+    "name": "Copernicus Atlantic ocean-colour transparency",
+    "role": "KD490 optical water-clarity context",
+    "dates": "2019–2024 cached daily subset; quality/cloud gaps",
+    "licence": "Copernicus Marine Service licence, free use with attribution",
+    "url": "https://doi.org/10.48670/moi-00286",
+    "attribution": "E.U. Copernicus Marine Service Information, OCEANCOLOUR_ATL_BGC_L3_MY_009_113",
+    "limits": "Multi-sensor approximately 1 km grid (cached grid resolution 1.1596 km). KD490 is not KdPAR, seabed light, habitat condition or kelp decline."
   }
 ]

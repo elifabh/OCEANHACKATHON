@@ -1,2 +1,2 @@
 @echo off
-call "%~dp0outputs\jury_release_20261014\START_PRESENTATION.bat"
+start "" "%~dp0outputs\final_delivery_20261014\OFFLINE_PRESENTATION.html"

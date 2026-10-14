@@ -104,6 +104,7 @@ def build_parametric(payload):
     cells=list(kg.geometry.buffer(25,cap_style='square'));depths=kg.depth_m.to_numpy();groups=connected_groups(cells)
     land,coast,domain,_=build_coast();base=payload['wave']['travel_deg'];scopes={}
     assets=[(f['properties']['osm_id'],transform(TO_ITM,shape(f['geometry']))) for f in payload['assets']['layer']['features']]
+    shoreline_distances={oid:geometry.distance(coast) for oid,geometry in assets}
     for group,ids in [(0,list(range(len(cells)))),*[(i+1,g) for i,g in enumerate(groups)]]:
         local=[cells[i] for i in ids];dd=depths[ids];directions={}
         for offset in [-30,-15,0,15,30]:
@@ -121,16 +122,17 @@ def build_parametric(payload):
                     if check['distance_m']>2000:check['status']='BEYOND_2KM_SCREEN'
                     choices.append((check['status']=='DIRECTIONALLY_PLAUSIBLE_UNVALIDATED',-check['distance_m'],check,origin,target))
                 _,_,check,origin,target=max(choices,key=lambda r:(r[0],r[1]))
-                counts[check['status']]+=1;asset_rows.append({'osm_id':osm_id,**check})
+                counts[check['status']]+=1;asset_rows.append({'osm_id':osm_id,**check,'shoreline_distance_m':shoreline_distances[osm_id]})
                 if check['status']=='DIRECTIONALLY_PLAUSIBLE_UNVALIDATED':passes.append(feature(LineString([origin,target]),{'osm_id':osm_id,'status':check['status']}))
-            upstream=[];u=direction_vector(bearing)
+            upstream=[];incoming_features=[];u=direction_vector(bearing)
             for cell in local:
                 pt=cell.centroid;line=LineString([(pt.x-2000*u[0],pt.y-2000*u[1]),(pt.x-2*u[0],pt.y-2*u[1])])
                 upstream.append({'land_blocked':line.intersection(land).length>1 or line.intersects(coast),'inside_coastline_domain':domain.covers(line)})
+                incoming_features.append(feature(line,{'kind':'UPSTREAM_STRAIGHT_PATH_NOT_NEARSHORE_WAVE','bearing_toward_deg':bearing,**upstream[-1]}))
             directions[str(offset)]={'bearing_deg':bearing,'rays':ray_inputs(local,dd,bearing,land),
               'shoreline':shores['10'],'shore_length_sensitivity_m':{k:v['length_m'] for k,v in shores.items()},
               'asset_screen':{'counts':dict(counts),'records':asset_rows,'paths':fc(passes),'note':'Direction-specific straight geographic screen, not a flood-hazard or beneficiary estimate.'},
-              'incoming_screen':{'cell_centres':len(upstream),'land_blocked':sum(x['land_blocked'] for x in upstream),'outside_domain':sum(not x['inside_coastline_domain'] for x in upstream),'distance_m':2000,'note':'Straight upstream rays at cell centres, not a local wave transformation.'},
+              'incoming_screen':{'cell_centres':len(upstream),'land_blocked':sum(x['land_blocked'] for x in upstream),'outside_domain':sum(not x['inside_coastline_domain'] for x in upstream),'distance_m':2000,'layer':fc(incoming_features),'note':'Straight upstream rays at cell centres, not a local wave transformation.'},
               'baseline':sample_bundle(local,dd,bearing,land=land)}
         scopes[str(group)]={'area_m2':unary_union(local).area,'cells':len(local),'directions':directions}
     return clean({'version':'1.0','method_source':'https://doi.org/10.1061/9780784402429.203',

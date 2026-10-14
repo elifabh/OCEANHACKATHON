@@ -12,6 +12,8 @@ import webbrowser
 
 ROOT=Path(__file__).resolve().parents[1]
 WEB=ROOT/'outputs/map'
+# Loopback must not be routed through an inherited corporate/system HTTP proxy.
+LOCAL_HTTP=urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -49,7 +51,7 @@ def main():
             server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);break
         except OSError:
             try:
-                with urllib.request.urlopen(url+'/__health',timeout=1) as response:health=json.load(response)
+                with LOCAL_HTTP.open(url+'/__health',timeout=1) as response:health=json.load(response)
                 if health.get('application')=='ocean-invisible-shield' and health.get('build_id')==expected:break
             except (OSError,ValueError):continue
     else:raise SystemExit('Ports 8000-8009 are in use. Close an old demo window or specify --port.')
@@ -57,7 +59,7 @@ def main():
         if server:threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
             for path in ['/index.html','/app.js','/app.css','/evidence.json','/vendor/leaflet/leaflet.js','/__health']:
-                with urllib.request.urlopen(url+path,timeout=10) as response:
+                with LOCAL_HTTP.open(url+path,timeout=10) as response:
                     if response.status!=200 or not response.read():raise RuntimeError('Empty HTTP response '+path)
             print('PASS: localhost launch and six HTTP resources, build '+expected)
         finally:
