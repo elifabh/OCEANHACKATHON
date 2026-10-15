@@ -1,0 +1,8 @@
+import path from 'node:path';import {pathToFileURL} from 'node:url';import fs from 'node:fs/promises';
+const workspaceDir=process.cwd(),skill='C:/Users/Elif/.codex/plugins/cache/openai-primary-runtime/presentations/26.1013.11914/skills/presentations',rt=path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies');
+process.env.RUNTIME_NODE_MODULES=path.join(rt,'node/node_modules');
+const {finalizePresentation}=await import(pathToFileURL(path.join(skill,'container_tools/artifact_tool_utils.mjs')).href);
+const out=path.join(workspaceDir,'outputs/final_creative_20261015');
+await finalizePresentation({workspaceDir,candidatePath:path.join(workspaceDir,'work/creative_20261015/creative-native-r6.pptx'),finalPath:path.join(out,'INVISIBLE_SHIELD_CREATIVE_FINAL_v3.pptx'),explicitTotalSlideCount:12,materializeLiteralChartWorkbooks:true,requiredNativeChartOwnerSlides:[7],requiredNativeTableOwnerSlides:[],pythonExecutable:path.join(rt,'python/python.exe'),integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit'],fontPolicy:{basis:'design',families:['Segoe UI']},verifyArtifactToolImport:true,receiptPath:path.join(workspaceDir,'work/creative_20261015/final-validation-r6.json')});
+await fs.copyFile(path.join(out,'INVISIBLE_SHIELD_CREATIVE_r6.pdf'),path.join(out,'INVISIBLE_SHIELD_CREATIVE_FINAL_v3.pdf'));
+console.log('Finalized editable creative revision; native playback QA still required.');

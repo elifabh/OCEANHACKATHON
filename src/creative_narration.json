@@ -1,0 +1,119 @@
+{
+  "build_id": "6a84de90fe69",
+  "slides": [
+    {
+      "slide": 1,
+      "seconds": 35,
+      "spoken": "What if coastal infrastructure is already alive? Kelp is a large brown seaweed. It creates underwater habitat where marine life can feed and shelter. It also interacts with waves. Our project, The Invisible Shield, brings these questions into coastal planning. We connect evidence below the water with decisions on land, and show where that evidence still needs testing.",
+      "cue": "Let the underwater image move. The Irish coast enters from the right. Advance manually at 00:35."
+    },
+    {
+      "slide": 2,
+      "seconds": 40,
+      "spoken": "Much of this habitat is hidden from view. A planner may find an old survey, a few species records and several separate maps. Each source helps, but the pieces are hard to use together. Change can be missed. Research can lose direction. A possible coastal role may stay untested. We have not measured habitat loss here. If we cannot map it, we cannot account for it.",
+      "cue": "The separate evidence strips cover the habitat. Pause after the final sentence. Advance at 01:15."
+    },
+    {
+      "slide": 3,
+      "seconds": 45,
+      "spoken": "Kelp has been mapped before. Our starting point is that useful work. Watch the separate records move into one assessment. We keep their meanings clear. Old survey areas stay historical. Dated observations keep their dates. Satellite results remain separate from confirmed habitat. The user can inspect condition and risk, test physical scenarios, change funding assumptions and explore biodiversity. The final report carries the evidence, the assumptions and the next research actions together.",
+      "cue": "Follow the moving source fragments. The categories remain separate after integration. Advance at 02:00."
+    },
+    {
+      "slide": 4,
+      "seconds": 60,
+      "spoken": "We start with public marine data. Python and geographic tools align coordinates, join records and check quality. A fixed calculation engine produces every wave and cost result. The map and report use those same values. Ask the Assessment adds a local evidence assistant. It reads the selected settings, follows links in a knowledge graph and searches source text. An optional language model can choose a topic. It does not create scientific answers or calculate values. Controlled rules build the answer and its references. Without the language model, the evidence assistant and the main assessment still work offline.",
+      "cue": "Follow the upper data path first, then the lower assistant path. The optional router is separate from the scientific answer compiler. Advance at 03:00."
+    },
+    {
+      "slide": 5,
+      "seconds": 50,
+      "spoken": "Our main case is Cape Clear, around South Harbour in Cork. The map moves from Ireland to the island, then adds the evidence. We can inspect historical habitat, dated records, offshore waves, depth and coastal objects together. A published seawall repair tender gives us a real engineering context. However, the habitat references disagree at our selected point. Some records also have location concerns. We therefore show a conditional assessment. These roads and buildings are places to investigate, not proven protected assets.",
+      "cue": "Let the continuous geographic zoom finish before pointing to individual layers. Advance at 03:50."
+    },
+    {
+      "slide": 6,
+      "seconds": 50,
+      "spoken": "Both scenarios start with the same incoming waves. The lower case adds an assumed kelp habitat. With our default assumptions, the model gives about eight point four three percent lower wave height across that cell. The moving surface keeps this small difference in proportion. The model stops at the cell boundary. Beyond it, we still need a model of waves approaching the shore and reaching coastal assets. This result is a physical hypothesis to test. It is not a measured reduction at a road or building.",
+      "cue": "Point first to the shared input, then the cell, then the model-end barrier. Advance at 04:40."
+    },
+    {
+      "slide": 7,
+      "seconds": 55,
+      "spoken": "The euro comparison uses a separate formula. The wave percentage does not enter this calculation. We assume one hundred metres of frontage. We multiply it by a published funding rate and an independent budget share. The pooled capital comparison is about five hundred and sixty two thousand euros. The bars show lower and higher source benchmarks. At four percent over fifty years, the annual capital equivalent is about twenty six thousand euros. These are engineering funding comparisons. They do not show avoided damage, verified savings or the value of kelp.",
+      "cue": "Follow each factor as it appears. Capital is one-off; the annual equivalent is separate. Advance at 05:35."
+    },
+    {
+      "slide": 8,
+      "seconds": 40,
+      "spoken": "Kelp is also living habitat. Its structure can offer shelter and feeding opportunities to fish and other organisms. The animation shows these general relationships. It is not a survey of Cape Clear. Our geographic inventory contains one hundred and fifty four records and one hundred and nine taxon names. It mixes places, dates and organism groups. We still need habitat-linked sampling to describe a local kelp community.",
+      "cue": "Allow the habitat structure and organisms to appear. The numbers describe the geographic inventory only. Advance at 06:15."
+    },
+    {
+      "slide": 9,
+      "seconds": 40,
+      "spoken": "Warming, storms, water quality and disturbance are possible pressures to investigate. We have not measured their effects on a current Cape Clear bed. First, verify the habitat. Then repeat a clear survey design, using the same footprint, method and season. That makes change easier to interpret. Only after checking condition, pressures and feasibility should we assess restoration. The product helps turn these gaps into practical research priorities.",
+      "cue": "The two images illustrate a proposed repeat-survey design, not actual before-and-after results. Advance at 06:55."
+    },
+    {
+      "slide": 10,
+      "seconds": 35,
+      "spoken": "A planner or research team receives one assessment they can share. They select an area, inspect evidence, compare assumptions and ask for sources. The report keeps their settings, results and next actions together. A colleague can then understand how the conclusion was reached. This supports the next investigation. It does not give planning approval. Here is the working application.",
+      "cue": "At 07:30, play DEMO_75_SECONDS.mp4 separately. Keep this slide in place. Read VIDEO_LIVE_NARRATION.md. Return and advance to slide 11 at 08:45."
+    },
+    {
+      "slide": 11,
+      "seconds": 45,
+      "spoken": "Our contribution is the connection between ecology, coastal engineering and economics. The product makes that connection inspectable. It offers a working demonstration, traceable digital data and one complete assessment. Its wider aim is better research and coastal decisions. The local assistant explains evidence without inventing benefits. Shared settings and reports help teams communicate. The same structure can support another site, but that site needs its own evidence and calibration. Team contribution fields remain editable for verified work.",
+      "cue": "Follow the disciplines into the shared assessment. Do not read all six proof labels as a checklist. Advance at 09:30."
+    },
+    {
+      "slide": 12,
+      "seconds": 30,
+      "spoken": "The Invisible Shield helps us see the evidence, understand its meaning and make better coastal decisions. We can give nature a place in the discussion while keeping every claim open to testing. Protecting our coast should also mean understanding the nature that helps protect it. Thank you for listening.",
+      "cue": "Hold the closing image and finish at 10:00. The deck never advances automatically."
+    }
+  ],
+  "video": [
+    {
+      "start": 0,
+      "end": 7,
+      "spoken": "I start in Cape Clear and check the selected assessment area on the map."
+    },
+    {
+      "start": 7,
+      "end": 17,
+      "spoken": "I inspect the historical evidence, change the date filter and open the source disagreement."
+    },
+    {
+      "start": 17,
+      "end": 26,
+      "spoken": "The condition and risk views show what we can assess and what needs fieldwork."
+    },
+    {
+      "start": 26,
+      "end": 39,
+      "spoken": "I compare the two habitat scenarios, pin a result and change the depth assumption."
+    },
+    {
+      "start": 39,
+      "end": 49,
+      "spoken": "I change the comparison frontage, then restore the defaults before moving on."
+    },
+    {
+      "start": 49,
+      "end": 57,
+      "spoken": "A biodiversity filter changes the inventory. A priority points to the next investigation."
+    },
+    {
+      "start": 57,
+      "end": 69,
+      "spoken": "I ask about the result and open the evidence behind the answer."
+    },
+    {
+      "start": 69,
+      "end": 75,
+      "spoken": "Finally, I create and download the assessment to share with a colleague."
+    }
+  ]
+}
