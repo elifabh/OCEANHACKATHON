@@ -8,3 +8,6 @@ __pycache__/
 docs/
 work/
 .chart-data-*/
+
+# Local launcher test junction and transient engineering diagnostics
+tmp/

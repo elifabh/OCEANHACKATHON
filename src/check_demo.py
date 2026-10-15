@@ -43,6 +43,9 @@ def main():
     if Path(node).is_file() and (packages/'playwright').exists():
         command('workspace_browser_tests',[node,'tests/browser_cape_product.mjs'])
         command('selected_report_browser_tests',[node,'tests/browser_cape_report.mjs'])
+        command('cross_browser_acceptance',[node,'tests/browser_cape_acceptance.mjs'])
+        pdf_python=Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'
+        command('pdf_readback_and_render',[str(pdf_python),'-X','utf8','tests/verify_cape_pdf.py'])
     else:
         rows.append({'name':'browser_tests','status':'BLOCKED','reason':'Existing Node/Playwright runtime unavailable. No installation attempted.'})
     command('original_data_and_media_preservation',[sys.executable,'src/product_preservation.py'])

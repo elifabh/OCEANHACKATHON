@@ -2,12 +2,16 @@
 setlocal
 cd /d "%~dp0"
 rem Default opens the self-contained app directly. No server or terminal must stay open.
-if not exist ".venv\Scripts\python.exe" goto missing
+if not exist ".venv\Scripts\python.exe" goto offline
 ".venv\Scripts\python.exe" "src\launch_demo.py" %*
 if errorlevel 1 goto failed
 exit /b 0
+:offline
+if not exist "outputs\map\index.html" goto missing
+start "" "%~dp0outputs\map\index.html"
+exit /b 0
 :missing
-echo The existing project Python environment is missing. See docs\overnight_20261013\RUNBOOK.md.
+echo Built application is missing. Run REBUILD_DEMO.bat with the project Python environment.
 :failed
 echo Demo could not start. The message above explains the problem.
 pause

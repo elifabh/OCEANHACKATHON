@@ -597,6 +597,7 @@ def main() -> None:
     from evidence_pipeline import OSM_CACHE,OSM_COAST_COMPLETE,NPWS,AUDIT
     source_files += ['src/workspace_evidence.py', 'src/workspace.js', 'src/workspace.css', 'src/report.js', 'src/launch_demo.py', 'src/check_demo.py', 'START_DEMO.bat', 'REBUILD_DEMO.bat', 'CHECK_DEMO.bat']
     source_files += ['src/cape_product_evidence.py','src/cape_template.html','src/cape_workspace.js','src/cape_workspace.css','src/cape_report.js','src/product_preservation.py']
+    source_files += ['src/cape_visuals.js']
     inputs=[ROOT/p for p in ["outputs/valuation/step3b2_flood_check.gpkg", "outputs/model/model_multisite_report.json", "outputs/model/suitability_multisite_predictions.csv", "outputs/indicator_match.csv", "outputs/indicator_site_scores.csv", "outputs/coastal_cost_calculation/calculation.json", "data/cmems/ibi_wav_sherkin.nc", "data/emodnet/exposure_sherkin_baltimore.tif", "outputs/restoration/restoration_candidates.geojson", "outputs/thumbnails/sherkin_baltimore__2022-07-14__T29UMT.png", "outputs/france/france_chain.json", "outputs/france/france_valuation.json", "outputs/valuation/nutrient_removal.json"]]
     inputs += list((ROOT/'outputs/visual_v2_20261014/inputs').glob('*.json'))
     inputs += [ROOT/p for p in WORKSPACE_INPUTS]
@@ -624,7 +625,7 @@ def main() -> None:
         raise ValueError("Restricted flood-derived data reached public payload")
     OUT_DIR.mkdir(parents=True,exist_ok=True)
     shutil.copytree(VENDOR_SRC,OUT_DIR/"vendor",dirs_exist_ok=True)
-    for name in ["app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","workspace.js","workspace.css","report.js","cape_workspace.js","cape_workspace.css","cape_report.js"]:
+    for name in ["app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","workspace.js","workspace.css","report.js","cape_workspace.js","cape_workspace.css","cape_report.js","cape_visuals.js"]:
         atomic_write(OUT_DIR/name,(ROOT/"src"/name).read_bytes())
     shutil.copytree(ROOT/'src/assets/story',OUT_DIR/'assets/story',dirs_exist_ok=True)
     # This is a verified existing Sentinel water-stretched RGB, grey land mask.
@@ -636,7 +637,7 @@ def main() -> None:
     manifest["build_id"]=payload["build_id"]
     delivered = [OUT_DIR/p for p in ["index.html","app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","evidence.json"]]
     delivered += [OUT_DIR/p for p in ['workspace.js','workspace.css','report.js']]
-    delivered += [OUT_DIR/p for p in ['cape_workspace.js','cape_workspace.css','cape_report.js']]
+    delivered += [OUT_DIR/p for p in ['cape_workspace.js','cape_workspace.css','cape_report.js','cape_visuals.js']]
     delivered += [p for p in (OUT_DIR/'assets/story').rglob('*') if p.is_file()]
     delivered += [p for p in (OUT_DIR/"vendor").rglob("*") if p.is_file()]
     if (OUT_DIR/"sentinel-context.png").exists():

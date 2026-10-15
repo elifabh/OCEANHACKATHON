@@ -63,7 +63,7 @@ def main():
     p.add_argument('--smoke',action='store_true',help='Verify built files via HTTP and exit')
     p.add_argument('--port',type=int,default=8000)
     a=p.parse_args()
-    for name in ['index.html','cape_workspace.js','cape_workspace.css','cape_report.js','parametric.js','evidence.json','build_manifest.json','vendor/leaflet/leaflet.js']:
+    for name in ['index.html','cape_workspace.js','cape_workspace.css','cape_report.js','cape_visuals.js','parametric.js','evidence.json','build_manifest.json','vendor/leaflet/leaflet.js']:
         if not (WEB/name).is_file():raise SystemExit(f'Missing {name}. Run REBUILD_DEMO.bat first.')
     expected=json.loads((WEB/'build_manifest.json').read_text())['build_id']
     if not a.serve and not a.smoke:

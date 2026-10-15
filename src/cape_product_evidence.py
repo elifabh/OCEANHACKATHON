@@ -42,7 +42,7 @@ def biodiversity(raw,bounds):
         key=(r.get('dataset_id'),r.get('occurrenceID') or r.get('id'))
         if key in seen: duplicates+=1;continue
         seen.add(key)
-        rows.append({k:r.get(k) for k in ['dataset_id','datasetName','occurrenceID','eventID','eventDate','scientificName','class','phylum','decimalLongitude','decimalLatitude','coordinateUncertaintyInMeters','minimumDepthInMeters','maximumDepthInMeters','flags','locality','absence','occurrenceStatus']})
+        rows.append({k:r.get(k) for k in ['id','dataset_id','datasetName','occurrenceID','eventID','eventDate','scientificName','class','phylum','decimalLongitude','decimalLatitude','coordinateUncertaintyInMeters','minimumDepthInMeters','maximumDepthInMeters','flags','locality','absence','occurrenceStatus','samplingProtocol']})
     return {'scope_bounds':bounds,'records':rows,'duplicates_removed':duplicates,'inventory_count':len(rows),
             'taxa_count':len(set(r['scientificName'] for r in rows if r['scientificName'])),
             'on_land_flag_count':sum('ON_LAND' in (r['flags'] or []) for r in rows),
@@ -75,6 +75,9 @@ def build_product(legacy):
     paths=read(F/'candidate_paths.geojson'); raw=read(ROOT/'outputs/obis_raw_occurrences.json')
     review={r['site']:r for r in read(R/'site_comparison.json')}; obs=read(R/'equal_region_occurrence_records.json')
     costs=read(F/'conditional_physics_and_euros.json'); waves=read(F/'directional_waves.json')
+    # The archived 100 m illustration is preserved in the input file. Product
+    # text must describe the live user inputs instead of repeating that example.
+    costs['cost_warning']='Wexford approved funding benchmarks, nominal mixed 2024/2026 amounts. Your comparison frontage and budget share are independent assumptions; no measured protected frontage, savings, kelp value or Cork quote is established.'
     sourcecell=next(f for f in cells['features'] if f['properties']['site']=='cape_clear' and f['properties']['sample_id']==1351)
     poly=transform(TO_ITM,shape(sourcecell['geometry']));origin=Point(*TO_ITM(*case['habitat_scenario_origin_lonlat']))
     coastgeom={f['properties']['kind']:transform(TO_ITM,shape(f['geometry'])) for f in coast['features']}
@@ -108,7 +111,7 @@ def build_product(legacy):
               'land':clipped(coast,[bounds[0]-.06,bounds[1]-.04,bounds[2]+.06,bounds[3]+.04],lambda f:f['properties']['kind']=='land'),
               'historical':clipped(hist,bounds,lambda f:f['properties']['site']==key),
               'assets':clipped(assets,bounds,lambda f:f['properties']['site']==key),
-              'intertidal':fc([]),'scenario_layer':fc([]),'scenario':None,
+              'intertidal':fc([]),'suitability':fc([]),'scenario_layer':fc([]),'scenario':None,
               'satellite':review.get(key,{}).get('two_date_clear_fractions',[]),
               'wave':waves.get(key), 'sources':['npws','infomar','cmems','osm','biodiversity','dubi','opw-cost']}
         if key=='cape_clear':
@@ -119,6 +122,7 @@ def build_product(legacy):
         elif key=='sherkin':
             scope=legacy['parametric']['scopes']['0']
             base.update({'land':legacy['coastline']['land'],'historical':legacy['historical']['layer'],
+                         'suitability':legacy['groups'],
                          'scenario_layer':fc([legacy['groups']['features'][0]]),'intertidal':legacy['intertidal']['extent'],
                          'assets':legacy['assets']['layer'],'wave':legacy['wave'],
                          'scenario':{**scope,'default_direction':'0','depth_m':None,'datum':'Legacy Sherkin source depth convention; never transferred to Cape Clear.','method':'Legacy 5 m ray bundle in model group 0; unsupported current species/extent assumptions remain.'},
@@ -144,7 +148,8 @@ def build_product(legacy):
                 {'id':'obis','name':'OBIS provider occurrence records','url':'https://obis.org','dates':'Dates and provider dataset IDs retained on each record','role':'Dated, mixed-taxa inventory','limits':'Aggregator; overlapping survey lineage, heterogeneous effort and coordinate flags. Not local kelp-bed richness.','licence':'Provider-specific terms; see dataset pages'}]
     for source in sources:
         if source['id']=='dubi':source['name']='Dubi & Torum (1996) laboratory wave damping'
-    return clean({'version':'cape-product-1','default_case':'cape_clear','cases':cases,'costs':costs,'sources':sources,
+        if source['id']=='infomar':source['limits']='Cape Clear AllSurvey mosaic vertical datum is unverified. Copper Point LIR bathymetry uses LAT; that convention is not transferred to Cape Clear. A centre point does not resolve within-cell relief or tidal depth.'
+    return clean({'version':'cape-product-2','default_case':'cape_clear','cases':cases,'costs':costs,'sources':sources,
                   'method_crs':'EPSG:2157 for geometry, EPSG:4326 for display','training_runs':0,
                   'promise_sections':['Habitat map','Condition and decline-risk components','Conditional coastal protection','Transparent euro scenarios','Biodiversity evidence','Research and restoration priorities','Integrated clickable assessment'],
                   'input_files':INPUTS,'disclosure':'AI-assisted preparation. Role assignments are proposed for event teamwork; no completed team contribution is asserted.'})

@@ -1,3 +1,13 @@
+# Accepted product refinement, 15 October 2026
+
+Cape Clear remains the main case. Current application build 8fd9d8213457 uses the shared cape_visuals.js palette/charts, a guided six-stage map workspace and visual 12-section HTML/PDF/state reports. START_DEMO.bat works offline and falls back to the built HTML if Python is missing. No final jury presentation, speaker notes or video was edited.
+
+Current acceptance is outputs/product_cape_clear_20261015/ACCEPTANCE.txt, acceptance.json, PROMISE_MATRIX.html and JURY_MATRIX.html. Use build-matched QA only; earlier PDF readback and render sheets were archived under qa/archive_pre_improvement. CHECK_DEMO now runs existing tests, Chrome/Edge acceptance and PDF semantic readback/rendering. After changes: rebuild, CHECK_DEMO, Windows launcher test, visual inspection, then tests/write_cape_acceptance.py. Do not call software acceptance ecological validation: all seven full scientific promises remain partial as the matrix explains.
+
+Active funding descriptions use current user inputs; archived source-project segment lengths are separately labelled. Cape AllSurvey datum is unverified, not LAT. Historical search/year and biodiversity class/year/quality/search filters are retained in selected report records and state. The standalone HTML has read-only search over its frozen inventory; it does not recalculate the assessment. The PDF is a fixed snapshot.
+
+---
+
 # Launch and product framing correction, 15 October 2026
 
 START_DEMO.bat now opens the self-contained file in the normal browser and exits. It does not depend on a server or a terminal staying alive. Optional HTTP use is `python src/launch_demo.py --serve`; Windows sockets use exclusive binding so a stale process cannot silently share a port. A chat link to a .bat file is not an executable launch guarantee. The Codex in-app browser disallows file URLs; normal Windows launch remains the supported offline route.
