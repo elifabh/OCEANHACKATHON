@@ -10,7 +10,7 @@ import sys
 from datetime import datetime,timezone
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'outputs/final_delivery_20261014/qa'
+OUT=ROOT/'outputs/product_cape_clear_20261015/qa'
 
 
 def sha(p):
@@ -41,10 +41,11 @@ def main():
     node=shutil.which('node') or str(runtime/'bin/node.exe')
     packages=runtime/'node_modules'
     if Path(node).is_file() and (packages/'playwright').exists():
-        command('workspace_browser_tests',[node,'tests/browser_workspace.mjs'])
-        command('selected_report_browser_tests',[node,'tests/browser_report.mjs'])
+        command('workspace_browser_tests',[node,'tests/browser_cape_product.mjs'])
+        command('selected_report_browser_tests',[node,'tests/browser_cape_report.mjs'])
     else:
         rows.append({'name':'browser_tests','status':'BLOCKED','reason':'Existing Node/Playwright runtime unavailable. No installation attempted.'})
+    command('original_data_and_media_preservation',[sys.executable,'src/product_preservation.py'])
     report={'checked_utc':datetime.now(timezone.utc).isoformat(),'build_id':manifest['build_id'],'checks':rows,
             'status':'PASS' if all(r['status']=='PASS' for r in rows) else 'FAIL_OR_BLOCKED'}
     (OUT/'test_report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

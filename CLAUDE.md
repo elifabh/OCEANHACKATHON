@@ -1,3 +1,19 @@
+# Current product decision and implementation, 15 October 2026
+
+Cape Clear / South Harbour is the user-approved main case. Do not restart site selection. Launch START_DEMO.bat; REBUILD_DEMO.bat and CHECK_DEMO.bat rebuild and verify the current six-stage product. The older presentation launchers and final media remain historical and must not be regenerated until the user agrees slide by slide.
+
+The current entry uses cape_template.html, cape_workspace.js/css and cape_report.js. cape_product_evidence.py reads the saved feasibility case and spatial/wave data; parametric.js retains the tested numerical engine with an explicit independent frontage mode. The previous workspace source and a compressed working-web-app backup remain available. Sherkin, Copper Point and Bantry are supporting cases. Original raw data and frozen test observations are unchanged; no classifier was refitted.
+
+All seven promises and six jury criteria remain active. Their concrete product/report mapping is in docs/CAPE_PRODUCT_EVIDENCE_MATRIX_20261015.txt. Main outputs, report samples, preservation audit and QA are in outputs/product_cape_clear_20261015/. The current SHA-256 build ID is always in outputs/map/build_manifest.json.
+
+Cape reference conflict: SSCO historical Laminaria versus Article 17 faunal turf at sample 1351; no current independent kelp validation. Sea-connected wave boundary cell is [-9.49970818,51.38966751], with 87,672 hours during 2015-2024. FROM 210 degrees gives approximately 8.43% attenuation within an assumed cell, or 3.56% at +2 m water depth. The mosaic datum is unverified; no LAT or tide forecast is inferred. No shoreline hazard, protected buildings or avoided damage is calculated. The former claim that every Cape incoming direction is blocked belongs to the older screening configuration and is superseded by the feasibility analysis, not silently erased from historical files.
+
+The euro panel uses explicitly assumed frontage and budget share. A 100 m / 100% baseline is EUR 431,562 / 562,090 / 715,050 at low/pooled/high funding rates; this is not savings, avoided damage or local kelp value. Biological condition and decline remain unknown where measurements are absent. Geographic OBIS taxon counts are a mixed inventory, not kelp-bed biodiversity scores. PDF/HTML/JSON report exports retain these boundaries and the current interactive state.
+
+Browser downloads inside a restricted agent sandbox may be cancelled after byte receipt by Windows. Run the existing browser QA under normal authorised Windows permissions; do not suppress download assertions or fabricate a passing result. Source changes still require a complete rebuild and CHECK_DEMO. No final PowerPoint, speaker notes or video may be changed in this phase.
+
+---
+
 # Current visual and functional revision, 14 October 2026
 
 All user requirements remain active, including the final visual revision and the complete scientific assessment workflow. Current app build: `d493f82c1a12`. Launch `START_DEMO.bat`; the primary jury path is `START_JURY_PRESENTATION.bat`. Final delivery: `outputs/presentations_visual_v2_20261014/`, with `SUNDAY_3_MINUTES_FINAL_VERIFIED.pptx`, `SUNDAY_5_MINUTES_FINAL_VERIFIED.pptx`, `FRIDAY_INVITATION.pptx` and an offline HTML presentation that plays continuous real video inside the page. Earlier delivery folders remain historical.

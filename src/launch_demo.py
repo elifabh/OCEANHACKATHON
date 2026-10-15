@@ -41,7 +41,7 @@ def main():
     p.add_argument('--smoke',action='store_true',help='Verify built files via HTTP and exit')
     p.add_argument('--port',type=int,default=8000)
     a=p.parse_args()
-    for name in ['index.html','app.js','app.css','evidence.json','build_manifest.json','vendor/leaflet/leaflet.js']:
+    for name in ['index.html','cape_workspace.js','cape_workspace.css','cape_report.js','parametric.js','evidence.json','build_manifest.json','vendor/leaflet/leaflet.js']:
         if not (WEB/name).is_file():raise SystemExit(f'Missing {name}. Run REBUILD_DEMO.bat first.')
     expected=json.loads((WEB/'build_manifest.json').read_text())['build_id']
     server=None
@@ -58,10 +58,10 @@ def main():
     if a.smoke:
         if server:threading.Thread(target=server.serve_forever,daemon=True).start()
         try:
-            for path in ['/index.html','/app.js','/app.css','/evidence.json','/vendor/leaflet/leaflet.js','/__health']:
+            for path in ['/index.html','/cape_workspace.js','/cape_workspace.css','/cape_report.js','/parametric.js','/evidence.json','/vendor/leaflet/leaflet.js','/__health']:
                 with LOCAL_HTTP.open(url+path,timeout=10) as response:
                     if response.status!=200 or not response.read():raise RuntimeError('Empty HTTP response '+path)
-            print('PASS: localhost launch and six HTTP resources, build '+expected)
+            print('PASS: localhost launch and eight HTTP resources, build '+expected)
         finally:
             if server:server.shutdown();server.server_close()
         return
