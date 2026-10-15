@@ -1,0 +1,13 @@
+{
+  "model": "gemma2:2b",
+  "runtime": "Ollama 0.40.4 on loopback only",
+  "model_role": "Select a registered evidence topic; never generate scientific claims or numbers",
+  "retrieval": "BM25 lexical text retrieval plus two-hop JSON graph traversal plus selected-state deterministic lookup",
+  "embedding": "No embedding required in production; installed nomic-embed-text benchmarked separately",
+  "temperature": 0,
+  "num_ctx": 2048,
+  "num_predict": 50,
+  "timeout_seconds": 8,
+  "fallback": "Always available browser-side deterministic evidence answer",
+  "paid_apis": false
+}

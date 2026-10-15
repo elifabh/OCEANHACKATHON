@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common import AOIS, CRS_ITM, PRIMARY_AOI  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "outputs" / "map"
+OUT_DIR = ROOT / "outputs/final_overnight_20261015/app"
 TEMPLATE = ROOT / "src" / "map_template.html"
 VENDOR_SRC = ROOT / "src" / "vendor"
 
@@ -591,13 +591,15 @@ def main() -> None:
     payload['workspace'] = build_workspace(payload)
     from cape_product_evidence import build_product, INPUTS as PRODUCT_INPUTS
     payload['product'] = build_product(payload)
+    from assessment_graph import build_graph
+    payload['assistant_graph'] = build_graph(payload['product'])
     payload['build_date'] = '2026-10-15'
     payload['costs']['default']['usage'] = 'LEGACY_GRID_AXIS_BASELINE_ONLY_NOT_CURRENT_SCENARIO'
     source_files = ["src/build_map.py", "src/common.py", "src/evidence_pipeline.py", "src/coastal_physics.py", "src/coastal_cost_calculator.py", "src/run_segment.py", "src/map_template.html", "src/app.js", "src/app.css", "src/data_sources.json", "src/story_evidence.py", "src/story.js", "src/atlas.css", "src/assessment.js", "src/parametric.js", "src/parametric_assessment.py", "src/screen_cape_clear.py", "src/presentation_scenario.json"]
     from evidence_pipeline import OSM_CACHE,OSM_COAST_COMPLETE,NPWS,AUDIT
     source_files += ['src/workspace_evidence.py', 'src/workspace.js', 'src/workspace.css', 'src/report.js', 'src/launch_demo.py', 'src/check_demo.py', 'START_DEMO.bat', 'REBUILD_DEMO.bat', 'CHECK_DEMO.bat']
     source_files += ['src/cape_product_evidence.py','src/cape_template.html','src/cape_workspace.js','src/cape_workspace.css','src/cape_report.js','src/product_preservation.py']
-    source_files += ['src/cape_visuals.js']
+    source_files += ['src/cape_visuals.js', 'src/assessment_graph.py', 'src/assessment_assistant.js', 'src/assistant_panel.js', 'src/assistant_panel.css', 'src/assistant_server.py', 'src/assistant_cli.cjs', 'src/assistant_config.json', 'START_ASSISTANT.bat']
     inputs=[ROOT/p for p in ["outputs/valuation/step3b2_flood_check.gpkg", "outputs/model/model_multisite_report.json", "outputs/model/suitability_multisite_predictions.csv", "outputs/indicator_match.csv", "outputs/indicator_site_scores.csv", "outputs/coastal_cost_calculation/calculation.json", "data/cmems/ibi_wav_sherkin.nc", "data/emodnet/exposure_sherkin_baltimore.tif", "outputs/restoration/restoration_candidates.geojson", "outputs/thumbnails/sherkin_baltimore__2022-07-14__T29UMT.png", "outputs/france/france_chain.json", "outputs/france/france_valuation.json", "outputs/valuation/nutrient_removal.json"]]
     inputs += list((ROOT/'outputs/visual_v2_20261014/inputs').glob('*.json'))
     inputs += [ROOT/p for p in WORKSPACE_INPUTS]
@@ -625,7 +627,7 @@ def main() -> None:
         raise ValueError("Restricted flood-derived data reached public payload")
     OUT_DIR.mkdir(parents=True,exist_ok=True)
     shutil.copytree(VENDOR_SRC,OUT_DIR/"vendor",dirs_exist_ok=True)
-    for name in ["app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","workspace.js","workspace.css","report.js","cape_workspace.js","cape_workspace.css","cape_report.js","cape_visuals.js"]:
+    for name in ["app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","workspace.js","workspace.css","report.js","cape_workspace.js","cape_workspace.css","cape_report.js","cape_visuals.js","assessment_assistant.js","assistant_panel.js","assistant_panel.css"]:
         atomic_write(OUT_DIR/name,(ROOT/"src"/name).read_bytes())
     shutil.copytree(ROOT/'src/assets/story',OUT_DIR/'assets/story',dirs_exist_ok=True)
     # This is a verified existing Sentinel water-stretched RGB, grey land mask.
@@ -634,17 +636,18 @@ def main() -> None:
         atomic_write(OUT_DIR/"sentinel-context.png", image_source.read_bytes())
     atomic_write(OUT_DIR/"evidence.json",json.dumps(clean(payload),ensure_ascii=False,indent=2,allow_nan=False).encode("utf-8"))
     atomic_write(OUT_DIR/"index.html",html.encode("utf-8"))
+    atomic_write(OUT_DIR/"assistant_graph.json", json.dumps(payload["assistant_graph"],ensure_ascii=False,indent=2).encode("utf-8"))
     manifest["build_id"]=payload["build_id"]
     delivered = [OUT_DIR/p for p in ["index.html","app.js","app.css","story.js","atlas.css","assessment.js","parametric.js","evidence.json"]]
     delivered += [OUT_DIR/p for p in ['workspace.js','workspace.css','report.js']]
-    delivered += [OUT_DIR/p for p in ['cape_workspace.js','cape_workspace.css','cape_report.js','cape_visuals.js']]
+    delivered += [OUT_DIR/p for p in ['cape_workspace.js','cape_workspace.css','cape_report.js','cape_visuals.js','assessment_assistant.js','assistant_panel.js','assistant_panel.css','assistant_graph.json']]
     delivered += [p for p in (OUT_DIR/'assets/story').rglob('*') if p.is_file()]
     delivered += [p for p in (OUT_DIR/"vendor").rglob("*") if p.is_file()]
     if (OUT_DIR/"sentinel-context.png").exists():
         delivered.append(OUT_DIR/"sentinel-context.png")
     manifest["output_sha256"]={p.relative_to(OUT_DIR).as_posix():sha(p) for p in sorted(delivered)}
     atomic_write(OUT_DIR/"build_manifest.json",json.dumps(manifest,indent=2).encode())
-    audit_dir=ROOT/"outputs/product_cape_clear_20261015/build_audit"
+    audit_dir=ROOT/"outputs/final_overnight_20261015/build_audit"
     atomic_write(audit_dir/"calculation.json",json.dumps(clean(payload["costs"]),indent=2).encode())
     atomic_write(audit_dir/"physical_results.json",json.dumps(clean(payload["physical"]),indent=2).encode())
     print("OK: build",payload["build_id"],";",len(html.encode())//1024,"KiB HTML")

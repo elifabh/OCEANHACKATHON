@@ -7,8 +7,8 @@ if not exist ".venv\Scripts\python.exe" goto offline
 if errorlevel 1 goto failed
 exit /b 0
 :offline
-if not exist "outputs\map\index.html" goto missing
-start "" "%~dp0outputs\map\index.html"
+if not exist "outputs\final_overnight_20261015\app\index.html" goto missing
+start "" "%~dp0outputs\final_overnight_20261015\app\index.html"
 exit /b 0
 :missing
 echo Built application is missing. Run REBUILD_DEMO.bat with the project Python environment.

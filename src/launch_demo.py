@@ -13,7 +13,7 @@ import urllib.parse
 import webbrowser
 
 ROOT=Path(__file__).resolve().parents[1]
-WEB=ROOT/'outputs/map'
+WEB=ROOT/'outputs/final_overnight_20261015/app'
 # Loopback must not be routed through an inherited corporate/system HTTP proxy.
 LOCAL_HTTP=urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
