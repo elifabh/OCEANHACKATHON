@@ -10,10 +10,10 @@ function make(){const s=W.getState(),c=W.current(),r=s.assessment,d=W.direction(
    sources:P.sources,input_files:P.input_files,promises:P.promise_sections};
  const limitation='This assessment demonstrates a conditional process. Historical references and dated species records do not establish current kelp geometry. Within-cell attenuation is not shoreline hazard, engineering funding is not avoided damage, and no specific building is claimed to be protected.';
  const summary=table(['Result category','Selected result','Status'],[
-   ['Current kelp extent','Not assessed','No current validated bed geometry'],
    ['Within assumed habitat',r?pct(r.height_fraction)+' wave-height attenuation':'Not assessed','Laboratory-coefficient sensitivity'],
-   ['Shoreline hazard','Not assessed','Wave transformation / surge / erosion missing'],
    ['Engineering comparison',r?eur(r.bands.low.capital_eur)+' – '+eur(r.bands.high.capital_eur):'Not assessed','Assumed independent budget; not savings'],
+   ['Current kelp extent','Not assessed','No current validated bed geometry'],
+   ['Shoreline hazard','Not assessed','Wave transformation / surge / erosion missing'],
    ['Actual avoided damage','Not quantified','Missing hazard, probability, exposure and damage functions']]);
  const parts=[];
  parts.push(section(1,'Assessment summary',para(c.name+' · '+c.role)+para('Generated '+snapshot.generated_utc+' · build '+s.build_id)+summary+'<div class="warning">'+esc(limitation)+'</div>'+W.mapSVG()+para('Map shows selected evidence layers within the declared assessment rectangle. The interactive viewport may be zoomed differently. Layers: '+s.layers.join(', ')+'. Geometry is rendered offline; no online tiles required.')+para('Rectangle W,S,E,N: '+c.bounds.join(', '))+para('Purple = historical reference; teal = assumed habitat; blue = dated records; brown = coastal objects; dashed blue = directional rays. © OpenStreetMap contributors / NPWS / OBIS.')));

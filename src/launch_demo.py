@@ -1,10 +1,12 @@
-"""Serve only the built demo on loopback, open a browser, and keep it running."""
+"""Open the self-contained offline app; optionally serve it on loopback."""
 from __future__ import annotations
 import argparse
 import functools
 import http.server
 import json
+import os
 from pathlib import Path
+import socket
 import threading
 import urllib.request
 import urllib.parse
@@ -14,6 +16,25 @@ ROOT=Path(__file__).resolve().parents[1]
 WEB=ROOT/'outputs/map'
 # Loopback must not be routed through an inherited corporate/system HTTP proxy.
 LOCAL_HTTP=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class DemoServer(http.server.ThreadingHTTPServer):
+    # Windows SO_REUSEADDR permits two listeners on one port, producing a
+    # successful bind followed by requests reaching the stale process instead.
+    allow_reuse_address=False
+    def server_bind(self):
+        if hasattr(socket,'SO_EXCLUSIVEADDRUSE'):
+            self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
+        super().server_bind()
+
+
+def open_offline():
+    page=WEB/'index.html'
+    url=page.as_uri()
+    print('Opening the offline coastal assessment: '+str(page),flush=True)
+    if not webbrowser.open_new_tab(url):
+        if os.name=='nt':os.startfile(str(page))
+        else:raise RuntimeError('Browser could not be opened. Open '+str(page)+' manually.')
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -37,6 +58,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--serve',action='store_true',help='Use an optional local HTTP server instead of the default offline file')
     p.add_argument('--no-browser',action='store_true')
     p.add_argument('--smoke',action='store_true',help='Verify built files via HTTP and exit')
     p.add_argument('--port',type=int,default=8000)
@@ -44,11 +66,15 @@ def main():
     for name in ['index.html','cape_workspace.js','cape_workspace.css','cape_report.js','parametric.js','evidence.json','build_manifest.json','vendor/leaflet/leaflet.js']:
         if not (WEB/name).is_file():raise SystemExit(f'Missing {name}. Run REBUILD_DEMO.bat first.')
     expected=json.loads((WEB/'build_manifest.json').read_text())['build_id']
+    if not a.serve and not a.smoke:
+        if a.no_browser:print((WEB/'index.html').as_uri())
+        else:open_offline()
+        return
     server=None
     for port in range(a.port,a.port+10):
         url=f'http://127.0.0.1:{port}'
         try:
-            server=http.server.ThreadingHTTPServer(('127.0.0.1',port),Handler);break
+            server=DemoServer(('127.0.0.1',port),Handler);break
         except OSError:
             try:
                 with LOCAL_HTTP.open(url+'/__health',timeout=1) as response:health=json.load(response)

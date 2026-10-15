@@ -1,3 +1,11 @@
+# Launch and product framing correction, 15 October 2026
+
+START_DEMO.bat now opens the self-contained file in the normal browser and exits. It does not depend on a server or a terminal staying alive. Optional HTTP use is `python src/launch_demo.py --serve`; Windows sockets use exclusive binding so a stale process cannot silently share a port. A chat link to a .bat file is not an executable launch guarantee. The Codex in-app browser disallows file URLs; normal Windows launch remains the supported offline route.
+
+The entry screen leads with existing historical evidence, the selected conditional cell-model result and explicit feasibility targets, followed by a research decision and direct scenario controls. Missing current bed extent, shoreline hazard and avoided damage remain explicit claim boundaries. Do not present this implementation as a validated current kelp map or demonstrated protection/savings product. Its present role is a preliminary coastal assessment and research-prioritisation demonstrator.
+
+---
+
 # Current product decision and implementation, 15 October 2026
 
 Cape Clear / South Harbour is the user-approved main case. Do not restart site selection. Launch START_DEMO.bat; REBUILD_DEMO.bat and CHECK_DEMO.bat rebuild and verify the current six-stage product. The older presentation launchers and final media remain historical and must not be regenerated until the user agrees slide by slide.
