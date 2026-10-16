@@ -1,0 +1,13 @@
+import fs from 'node:fs/promises';import path from 'node:path';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
+const root=process.cwd(),require=createRequire(path.join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/package.json')),{chromium}=require('playwright'),sharp=require('sharp');
+const ev=JSON.parse(await fs.readFile(path.join(root,'outputs/jury_release_20261014/EVIDENCE_TABLE.json'),'utf8'));
+const out=path.join(root,'outputs/jury_release_20261014'),work=path.join(root,'work/jury_release_20261014'),checks=[];
+for(const v of ['compact','extended','friday'])for(let i=1;i<=(v==='friday'?1:6);i++){
+ const a=await sharp(path.join(work,'render-'+v,`slide-${i}.png`)).raw().toBuffer();const b=await sharp(path.join(work,'final-render-'+v,`slide-${i}.png`)).raw().toBuffer();assert.ok(a.equals(b),'Final native render changed '+v+i);
+}checks.push({name:'All 13 final native slides match individually inspected native renders',status:'PASS'});
+const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+try{const context=await browser.newContext({viewport:{width:1200,height:1100}});await context.setOffline(true);const p=await context.newPage();
+for(const name of ['OFFLINE_PRESENTATION.html','OFFLINE_DEMO.html','KULLANIM_TR.html']){await p.goto(pathToFileURL(path.join(out,name)).href);const links=await p.locator('a[href]').evaluateAll(a=>a.map(n=>n.getAttribute('href')));for(const l of links.filter(x=>!x.startsWith('http')&&!x.startsWith('#'))){if(l==='DELIVERY_STATUS.json')continue;await fs.access(path.join(out,l));}checks.push({name:'Offline local links '+name,status:'PASS',links:links.length});}
+await p.pdf({path:path.join(out,'KULLANIM_TR.pdf'),format:'A4',printBackground:true,preferCSSPageSize:true});await p.screenshot({path:path.join(work,'handover-preview.png'),fullPage:true});
+await p.goto(pathToFileURL(path.join(out,'ASSESSMENT_PILOT.html')).href);assert.ok((await p.locator('body').innerText()).includes(Math.round(ev.model.bands.low.capital_eur).toLocaleString('en-IE')));assert.match(await p.locator('body').innerText(),/Not quantified/);assert.ok((await p.locator('body').innerText()).includes((ev.model.height_fraction*100).toFixed(2)));checks.push({name:'Downloaded offline selected report contains correct calculation and caveat',status:'PASS'});
+}finally{await browser.close();}await fs.writeFile(path.join(work,'delivery-file-checks.json'),JSON.stringify({status:'PASS',checks},null,2));console.log(JSON.stringify(checks));

@@ -1,0 +1,182 @@
+[
+  {
+    "id": "sentinel",
+    "name": "Copernicus Sentinel-2",
+    "role": "Detected intertidal macroalgae proxy and RGB context",
+    "dates": "Seven May–August 2022 scenes; RGB 14 July 2022",
+    "licence": "Copernicus free, full and open use with attribution",
+    "url": "https://dataspace.copernicus.eu/terms-and-conditions",
+    "attribution": "Contains modified Copernicus Sentinel data (2022), processed by the project",
+    "limits": "Species-agnostic, unvalidated extent. Water-stretched RGB with land masked grey. No contemporary subtidal kelp detection."
+  },
+  {
+    "id": "npws",
+    "name": "NPWS marine communities",
+    "role": "Historical Laminaria community reference",
+    "dates": "2011 survey synthesis; March 2025 package",
+    "licence": "NPWS Open Data policy (CC BY 4.0 default); source-specific usage notes apply",
+    "url": "https://www.npws.ie/maps-and-data/designated-site-data/ssco-data",
+    "attribution": "National Parks and Wildlife Service, Department of Housing, Local Government and Heritage",
+    "limits": "Mapped/interpolated historical community, not a 2025 field survey. Original OSi basemap is not reproduced. Exact survey date per polygon unavailable."
+  },
+  {
+    "id": "infomar",
+    "name": "INFOMAR",
+    "role": "Cell depth and habitat model bathymetry",
+    "dates": "Cached 2026; survey age varies",
+    "licence": "CC BY 4.0",
+    "url": "https://www.infomar.ie/data",
+    "attribution": "Contains Irish Public Sector Data (Geological Survey Ireland and Marine Institute), CC BY 4.0",
+    "limits": "LAT vertical datum; cell centre depth does not resolve within-cell relief or tidal water depth."
+  },
+  {
+    "id": "cmems",
+    "name": "Copernicus Marine IBI wave reanalysis",
+    "role": "Offshore wave climate and directional scenario",
+    "dates": "2015–2024 hourly subset",
+    "licence": "Copernicus Marine Service licence, free use with attribution",
+    "url": "https://marine.copernicus.eu/user-corner/service-commitments-and-licence",
+    "attribution": "E.U. Copernicus Marine Service Information; NOWSystems and MeteoFrance",
+    "limits": "Nearest wet model point offshore. No local refraction, shoaling, breaking or hazard validation."
+  },
+  {
+    "id": "emodnet",
+    "name": "EMODnet Bathymetry",
+    "role": "Coarse depth context",
+    "dates": "Cached 2026; source survey ages vary",
+    "licence": "CC BY 4.0 for EMODnet-created data products; source metadata governs exceptions",
+    "url": "https://emodnet.ec.europa.eu/en/terms-use-emodnet-online-services-data-and-data-products",
+    "attribution": "EMODnet Bathymetry Consortium; an EU-owned data product, licensed under CC BY 4.0",
+    "limits": "Local cached raster resampled to about 290 × 464 m; context only."
+  },
+  {
+    "id": "burrows",
+    "name": "Burrows wave-fetch raster",
+    "role": "Historical suitability-model predictor",
+    "dates": "2020 dataset, 200 m UK and Ireland grid",
+    "licence": "CC BY 4.0, exact local TIFF MD5 matched Figshare metadata on 13 October 2026",
+    "url": "https://doi.org/10.6084/m9.figshare.12029682",
+    "attribution": "Michael T. Burrows, Wave fetch GIS layers for the UK and Ireland at 200m scale",
+    "limits": "Geometric exposure proxy, not significant wave height."
+  },
+  {
+    "id": "osm",
+    "name": "OpenStreetMap",
+    "role": "Coastline and candidate physical assets",
+    "dates": "Coastline caches August and October 2026; assets October 2026",
+    "licence": "Open Database Licence (ODbL)",
+    "url": "https://www.openstreetmap.org/copyright",
+    "attribution": "© OpenStreetMap contributors",
+    "limits": "Incomplete mapping. Object counts can include related parts of one physical asset. OSM-derived feature collections retain ODbL obligations."
+  },
+  {
+    "id": "epa",
+    "name": "EPA Water Framework Directive",
+    "role": "Regional water-quality context",
+    "dates": "Cycles 2007–2009 to 2019–2024",
+    "licence": "CC BY 4.0 for EPA-produced data; no OSi base mapping reproduced",
+    "url": "https://gis.epa.ie/ContactUs/Policy",
+    "attribution": "Environmental Protection Agency Ireland",
+    "limits": "Macroalgae element available only for two cycles up to 2010–2015. No measurement of this kelp bed's extent or biomass."
+  },
+  {
+    "id": "biodiversity",
+    "name": "OBIS Marine Recorder snapshots and Schoenrock et al.",
+    "role": "West Cork reference-taxa presence indicator",
+    "dates": "Historical occurrence compilation; reference list 2020",
+    "licence": "CC BY 4.0 verified for the three contributing occurrence datasets and the reference paper",
+    "url": "https://doi.org/10.1002/ece3.6345",
+    "attribution": "JNCC, National Museums Northern Ireland, SeaSearch, Marine Biological Association / DASSH, OBIS; Schoenrock et al. (2020)",
+    "limits": "14 of 17 reference taxa across 35 West Cork sites. Regional presence is effort-biased, not ecological health. All 1,854 contributing records trace to the three dataset licences below."
+  },
+  {
+    "id": "dubi",
+    "name": "Dubi & Tørum laboratory study",
+    "role": "L. hyperborea attenuation coefficients",
+    "dates": "Coastal Engineering 1996 proceedings",
+    "licence": "Published scientific coefficients with citation",
+    "url": "https://doi.org/10.1061/9780784402429.203",
+    "attribution": "Dubi, A. and Tørum, A., Wave Energy Dissipation in Kelp Vegetation",
+    "limits": "Artificial plants, 4–10 m full-scale depth, reference density/morphology and periods. Depth interpolation and polygon-ray integration are project choices."
+  },
+  {
+    "id": "opw-cost",
+    "name": "OPW approved minor-works funding",
+    "role": "Conditional engineering-funding comparison",
+    "dates": "Selected 2024 and 2026 approvals",
+    "licence": "Public numeric funding records cited; no flood geometry copied",
+    "url": "https://www.floodinfo.ie/county-summary/?c=25",
+    "attribution": "Office of Public Works, Wexford county funding records",
+    "limits": "Three selected interventions at one Seaview site. Nominal approved grants, not out-turn costs or Cork design quotes. Service equivalence, least cost and demand unproven."
+  },
+  {
+    "id": "opw-flood",
+    "name": "OPW flood extents",
+    "role": "Excluded from this application",
+    "dates": "Existing internal analysis only",
+    "licence": "Reuse clearance unresolved; restricted layers withheld",
+    "url": "https://www.floodinfo.ie/",
+    "attribution": "Office of Public Works",
+    "limits": "No OPW flood geometry, overlap flag, flood-derived feature styling or derivative visual is shipped."
+  },
+  {
+    "id": "sst",
+    "name": "NOAA OISST v2.1",
+    "role": "Regional temperature context from a small NOAA subset",
+    "dates": "2015–2024, every 30th daily step",
+    "licence": "Free use and redistribution with NOAA disclaimer",
+    "url": "https://doi.org/10.25921/RE9P-PT57",
+    "attribution": "NOAA National Centers for Environmental Information",
+    "limits": "Sparse surface-temperature sample averages, not annual climatological means, seabed temperatures, heatwave diagnoses or kelp-loss measurements."
+  },
+  {
+    "id": "leaflet",
+    "name": "Leaflet 1.9.4",
+    "role": "Local interactive map library",
+    "dates": "Vendored library",
+    "licence": "BSD-2-Clause; licence included locally",
+    "url": "https://leafletjs.com/",
+    "attribution": "Vladimir Agafonkin and Leaflet contributors",
+    "limits": "Optional OSM online tiles obey provider policy; no bulk or offline tile download."
+  },
+  {
+    "id": "obis-3e981ea4-29b3-4df5-8529-38d798262eb1",
+    "name": "Marine Recorder Snapshot extract of surveys entered by SeaSearch",
+    "role": "Occurrence source underlying regional indicator",
+    "dates": "Dataset v2.1, published January 2022; historical surveys",
+    "licence": "CC BY 4.0, OBIS dataset intellectualrights verified 13 October 2026",
+    "url": "https://doi.org/10.17031/yq0gbg",
+    "attribution": "SeaSearch (2021): Marine Recorder Snapshot extract of surveys entered by SeaSearch. v2.1. Marine Biological Association. Dataset/Samplingevent. https://doi.org/10.17031/yq0gbg",
+    "limits": "The local indicator uses co-located survey records; no contemporary habitat condition is inferred."
+  },
+  {
+    "id": "obis-6d7b384f-090b-4c15-b68d-4c1192c0f8a6",
+    "name": "Marine Recorder Snapshot extract of surveys entered by JNCC",
+    "role": "Occurrence source underlying regional indicator",
+    "dates": "Dataset v2.1, published January 2022; historical surveys",
+    "licence": "CC BY 4.0, OBIS dataset intellectualrights verified 13 October 2026",
+    "url": "https://doi.org/10.17031/mehqrq",
+    "attribution": "Joint Nature Conservation Committee (JNCC) (2021): Marine Recorder Snapshot extract of surveys entered by JNCC. v2.1. Marine Biological Association. Dataset/Samplingevent. https://doi.org/10.17031/mehqrq",
+    "limits": "The local indicator uses co-located survey records; no contemporary habitat condition is inferred."
+  },
+  {
+    "id": "obis-953e0d26-24e8-4797-b944-8aa7fe2ea937",
+    "name": "Marine Recorder Snapshot extract of surveys entered by National Museums Northern Ireland (NMNI)",
+    "role": "Occurrence source underlying regional indicator",
+    "dates": "Dataset v2.1, published January 2022; historical surveys",
+    "licence": "CC BY 4.0, OBIS dataset intellectualrights verified 13 October 2026",
+    "url": "https://doi.org/10.17031/frdvov",
+    "attribution": "National Museums Northern Ireland (NMNI) (2021): Marine Recorder Snapshot extract of surveys entered by National Museums Northern Ireland (NMNI). v2.1. Marine Biological Association. Dataset/Samplingevent. https://doi.org/10.17031/frdvov",
+    "limits": "The local indicator uses co-located survey records; no contemporary habitat condition is inferred."
+  },
+  {
+    "id": "clarity",
+    "name": "Copernicus Atlantic ocean-colour transparency",
+    "role": "KD490 optical water-clarity context",
+    "dates": "2019–2024 cached daily subset; quality/cloud gaps",
+    "licence": "Copernicus Marine Service licence, free use with attribution",
+    "url": "https://doi.org/10.48670/moi-00286",
+    "attribution": "E.U. Copernicus Marine Service Information, OCEANCOLOUR_ATL_BGC_L3_MY_009_113",
+    "limits": "Multi-sensor approximately 1 km grid (cached grid resolution 1.1596 km). KD490 is not KdPAR, seabed light, habitat condition or kelp decline."
+  }
+]

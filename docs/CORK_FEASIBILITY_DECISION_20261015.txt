@@ -1,0 +1,37 @@
+DECISIVE CORK FEASIBILITY PASS — HANDOVER
+
+Read outputs/cork_feasibility_20261015/REPORT.txt and IMPLEMENTATION_PLAN.txt.
+Fixed recommendation: Cape Clear / South Harbour CONDITIONAL PROCESS prototype.
+No site currently supports verified kelp -> shoreline protection -> avoided euros.
+Long Island is not approved as the final integrated demonstration location.
+
+Actual work completed:
+- Enumerated Galway thesis repository file bundles: no experimental raw sonar,
+  navigation, GIS footprint or video files. Public raw reprocessing is no-go now.
+- Queried current INFOMAR survey-leg catalogue, downloaded/read actual 59.65 MB
+  LIR19_03 bathymetry archive. This is seabed geometry, not canopy/raw WCD.
+- Downloaded complete 2015-2024 Hs/direction/period series, regional coastline,
+  roads/buildings/harbours, point bathymetry and small GLO-30 terrain clips.
+- Tested 36 sectors and 2/5 km incoming barriers at all three requested sites.
+  Cape additionally uses 13 wet model cells and nearest sea-connected assignment.
+- Executed existing conditional damping and independent euro cost scenarios.
+  South Harbour sample: 38.955 m scenario chord, nominal 7.044 m depth,
+  8.430% within-cell height reduction; +2 m depth gives 3.559%. No shore effect
+  or avoided damage is inferred. Article17/SSCO conflict remains explicit.
+- Identified actual Cork County Council South Harbour road/quay seawall tender;
+  no published contract value or established kelp substitution is claimed.
+
+Next phase consumes cape_clear_south_harbour_case.json in existing pipeline,
+assessment and parametric modules. No additional site search or wait for raw
+research files is needed. Main claim remains a transparent conditional scenario.
+Copper Point stays methodological historical evidence; Bantry stays dated
+underwater evidence and an explicit unknown-bed-width control.
+
+All seven original promises, transferability, and six jury criteria persist;
+see requirements_preserved.json. Habitat classes remain satellite intertidal
+macroalgae / historical kelp / modelled suitability. No new training, no changed
+held-out test, no application/UI/presentation/video rebuild in this pass.
+
+Replay: outputs/cork_feasibility_20261015/REPRODUCE.ps1, offline with existing venv.
+Source scripts: src/cork_feasibility*.py. Raw/derived data remain in the dedicated
+output folder; originals and accepted eight-site research remain byte-identical.

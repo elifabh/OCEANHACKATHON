@@ -1,0 +1,20 @@
+{
+  "id": "CORK_PILOT_BASELINE_V1",
+  "label": "Roaringwater Bay / seven-cell pilot",
+  "group": 0,
+  "direction_offset_deg": 0,
+  "inputs": {
+    "water_level_m": 0,
+    "coefficient_multiplier": 1,
+    "method": "interpolated",
+    "cost_share": 1,
+    "rate_multiplier": 1,
+    "discount_rate": 0.04,
+    "years": 50,
+    "length_mode": "shoreline",
+    "assumed_width_m": 100
+  },
+  "interpretation": "Conditional engineering funding comparison; neither verified avoided damage nor validated ecosystem-service value. Candidate shoreline is geometric, not verified protected frontage.",
+  "uncertainty": "Published funding-rate range and declared parameter sensitivities, not a statistical confidence interval.",
+  "inactive_input": "assumed_width_m is stored for reproducibility but has no effect when length_mode is shoreline."
+}

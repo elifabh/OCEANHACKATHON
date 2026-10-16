@@ -1,0 +1,64 @@
+[
+  {
+    "file": "sherkin-coast.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Coastline_of_Sherkin_Island,_Ireland.jpg",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ed/Coastline_of_Sherkin_Island%2C_Ireland.jpg/1280px-Coastline_of_Sherkin_Island%2C_Ireland.jpg?utm_source=commons.wikimedia.org&amp;utm_campaign=index&amp;utm_content=thumbnail",
+    "author": "Joe Stump",
+    "licence": "CC BY 2.0",
+    "terms": "https://creativecommons.org/licenses/by/2.0/",
+    "caption": "Sherkin Island, Ireland. Photograph dated 18 July 2009.",
+    "changes": "Wikimedia thumbnail; display crop only, no scientific annotation",
+    "sha256": "51cbbb7cea2966ee04a369439fec6e4d82d4e25711e5f632e5c3cbb30ae5ede8"
+  },
+  {
+    "file": "kelp-forest.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Forêt_sous-marine_à_Molène_(Ifremer_00675-78700_-_31609).jpg",
+    "download": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/For%C3%AAt_sous-marine_%C3%A0_Mol%C3%A8ne_%28Ifremer_00675-78700_-_31609%29.jpg/1280px-For%C3%AAt_sous-marine_%C3%A0_Mol%C3%A8ne_%28Ifremer_00675-78700_-_31609%29.jpg?utm_source=commons.wikimedia.org&amp;utm_campaign=index&amp;utm_content=thumbnail",
+    "author": "Xavier Caisey / Ifremer",
+    "licence": "CC BY 4.0",
+    "terms": "https://creativecommons.org/licenses/by/4.0/",
+    "caption": "Laminaria hyperborea at Molène, France. Ecological context photograph, not a Cork survey.",
+    "changes": "Wikimedia thumbnail; display crop only, no scientific annotation",
+    "sha256": "4f29d6247642a3076b8ff5984c2781d06fda4b620af2e87fd94b40c609939881"
+  },
+  {
+    "file": "ireland-context.geojson",
+    "source": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson",
+    "author": "Natural Earth",
+    "licence": "Public domain",
+    "terms": "https://www.naturalearthdata.com/about/terms-of-use/",
+    "caption": "Generalised 1:50m country outline. Orientation only, not a habitat map.",
+    "changes": "Ireland and United Kingdom extracted; properties reduced",
+    "sha256": "7ed02040085f9d5a9ab2e8b48f39f06ec31b249df0e0f822bd85e6585f848034"
+  },
+  {
+    "file": "roaringwater-bay.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:An_inlet_of_Roaringwater_Bay_-_geograph.org.uk_-_4964956.jpg",
+    "author": "Gordon Hatton",
+    "licence": "CC BY-SA 2.0",
+    "terms": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "caption": "An inlet of Roaringwater Bay, West Cork. Landscape context, not a habitat survey.",
+    "changes": "Display crop and resize only. Adapted photographic material under the same CC BY-SA licence.",
+    "sha256": "eb2f88b8b72083da5c408d57133597af3981d8be9ff1d3e109059839fd865cf0"
+  },
+  {
+    "file": "kilkieran-bay.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Kilkieran_Bay_001.jpg",
+    "author": "Dieglop",
+    "licence": "CC BY-SA 4.0",
+    "terms": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "caption": "Kilkieran Bay, Galway. 21 June 2021. Landscape context, not the An Aird survey station.",
+    "changes": "Display crop and resize only. Adapted photographic material under the same CC BY-SA licence.",
+    "sha256": "43dcd707d5842c3d899084b8219039c2bca38a106f16a0f88a58cb971fcee92a"
+  },
+  {
+    "file": "kilkee-coast.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Kilkee_Reefs_and_Cliffs.jpg",
+    "author": "Matteo.mazza.91",
+    "licence": "CC BY-SA 4.0",
+    "terms": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "caption": "Kilkee Reefs and Cliffs, Clare. 5 June 2023. Landscape context, not an underwater survey.",
+    "changes": "Display crop and resize only. Adapted photographic material under the same CC BY-SA licence.",
+    "sha256": "c84533372f95766dac803900c8db14af854a0613300a43de9295de460d3a8f8f"
+  }
+]

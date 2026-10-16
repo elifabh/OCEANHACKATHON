@@ -1,0 +1,33 @@
+Current scope: multi-location Cork evidence comparison before any further training.
+The user explicitly paused model refitting and prohibited application/presentation rebuilds.
+All prior product requirements remain active for later phases.
+
+Completed output: outputs/cork_multisite_review_20261015/REPORT.txt
+Reproduce offline: outputs/cork_multisite_review_20261015/REPRODUCE.ps1
+Source references: outputs/cork_multisite_review_20261015/source_register.json
+Numerical comparison: outputs/cork_multisite_review_20261015/comparison_table.csv
+Decision: outputs/cork_multisite_review_20261015/decision.json
+
+Eight regional windows; same two Sentinel-2 dates; same sparse bathymetric probe
+design; one common-region OBIS query (390 returned records); historical NPWS
+class crosswalk; wave/asset review; primary Irish/international technology review.
+
+Conditional next mapping/field-method pilot: Long Island / Copper Point, based on
+published co-located 2019 multibeam water-column and drop-video work, not existing
+Sherkin file convenience or euro results. No location yet satisfies all requirements
+for validated coastal protection. The Copper Point preliminary directional screen
+does not establish a link to nearby building clusters. Raw 2019 sonar/video still
+needs to be obtained. Bantry has quantitative 2016 dive measurements but published
+sample coordinates/maps are redacted. Cape Clear remains an exposed-island alternative.
+
+The prior optical task remains intertidal macroalgae, NOT confirmed subtidal kelp.
+src/cork_pilot_correction.py was prepared before the user's change of scope; its
+preparation was interrupted and it has NOT been fitted. Partial preparation outputs
+are marked in outputs/cork_pilot_correction_20261015/STATUS_NO_REFIT.json.
+Do not present them as before/after results or ecological validation.
+
+No new classifier trained, no app or presentation rebuilt, no original data replaced.
+Protected product and frozen experiment hashes verified unchanged; see final_verification.json.
+The held-out Sherkin test must remain untouched when optical correction resumes.
+Public depth data, historical kelp, satellite macroalgae and modelled suitability
+must stay separate. NPWS layer disagreement is not evidence of ecological decline.

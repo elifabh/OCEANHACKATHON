@@ -1,3 +1,63 @@
+# Accepted product refinement, 15 October 2026
+
+Cape Clear remains the main case. Current application build 8fd9d8213457 uses the shared cape_visuals.js palette/charts, a guided six-stage map workspace and visual 12-section HTML/PDF/state reports. START_DEMO.bat works offline and falls back to the built HTML if Python is missing. No final jury presentation, speaker notes or video was edited.
+
+Current acceptance is outputs/product_cape_clear_20261015/ACCEPTANCE.txt, acceptance.json, PROMISE_MATRIX.html and JURY_MATRIX.html. Use build-matched QA only; earlier PDF readback and render sheets were archived under qa/archive_pre_improvement. CHECK_DEMO now runs existing tests, Chrome/Edge acceptance and PDF semantic readback/rendering. After changes: rebuild, CHECK_DEMO, Windows launcher test, visual inspection, then tests/write_cape_acceptance.py. Do not call software acceptance ecological validation: all seven full scientific promises remain partial as the matrix explains.
+
+Active funding descriptions use current user inputs; archived source-project segment lengths are separately labelled. Cape AllSurvey datum is unverified, not LAT. Historical search/year and biodiversity class/year/quality/search filters are retained in selected report records and state. The standalone HTML has read-only search over its frozen inventory; it does not recalculate the assessment. The PDF is a fixed snapshot.
+
+---
+
+# Launch and product framing correction, 15 October 2026
+
+START_DEMO.bat now opens the self-contained file in the normal browser and exits. It does not depend on a server or a terminal staying alive. Optional HTTP use is `python src/launch_demo.py --serve`; Windows sockets use exclusive binding so a stale process cannot silently share a port. A chat link to a .bat file is not an executable launch guarantee. The Codex in-app browser disallows file URLs; normal Windows launch remains the supported offline route.
+
+The entry screen leads with existing historical evidence, the selected conditional cell-model result and explicit feasibility targets, followed by a research decision and direct scenario controls. Missing current bed extent, shoreline hazard and avoided damage remain explicit claim boundaries. Do not present this implementation as a validated current kelp map or demonstrated protection/savings product. Its present role is a preliminary coastal assessment and research-prioritisation demonstrator.
+
+---
+
+# Current product decision and implementation, 15 October 2026
+
+Cape Clear / South Harbour is the user-approved main case. Do not restart site selection. Launch START_DEMO.bat; REBUILD_DEMO.bat and CHECK_DEMO.bat rebuild and verify the current six-stage product. The older presentation launchers and final media remain historical and must not be regenerated until the user agrees slide by slide.
+
+The current entry uses cape_template.html, cape_workspace.js/css and cape_report.js. cape_product_evidence.py reads the saved feasibility case and spatial/wave data; parametric.js retains the tested numerical engine with an explicit independent frontage mode. The previous workspace source and a compressed working-web-app backup remain available. Sherkin, Copper Point and Bantry are supporting cases. Original raw data and frozen test observations are unchanged; no classifier was refitted.
+
+All seven promises and six jury criteria remain active. Their concrete product/report mapping is in docs/CAPE_PRODUCT_EVIDENCE_MATRIX_20261015.txt. Main outputs, report samples, preservation audit and QA are in outputs/product_cape_clear_20261015/. The current SHA-256 build ID is always in outputs/map/build_manifest.json.
+
+Cape reference conflict: SSCO historical Laminaria versus Article 17 faunal turf at sample 1351; no current independent kelp validation. Sea-connected wave boundary cell is [-9.49970818,51.38966751], with 87,672 hours during 2015-2024. FROM 210 degrees gives approximately 8.43% attenuation within an assumed cell, or 3.56% at +2 m water depth. The mosaic datum is unverified; no LAT or tide forecast is inferred. No shoreline hazard, protected buildings or avoided damage is calculated. The former claim that every Cape incoming direction is blocked belongs to the older screening configuration and is superseded by the feasibility analysis, not silently erased from historical files.
+
+The euro panel uses explicitly assumed frontage and budget share. A 100 m / 100% baseline is EUR 431,562 / 562,090 / 715,050 at low/pooled/high funding rates; this is not savings, avoided damage or local kelp value. Biological condition and decline remain unknown where measurements are absent. Geographic OBIS taxon counts are a mixed inventory, not kelp-bed biodiversity scores. PDF/HTML/JSON report exports retain these boundaries and the current interactive state.
+
+Browser downloads inside a restricted agent sandbox may be cancelled after byte receipt by Windows. Run the existing browser QA under normal authorised Windows permissions; do not suppress download assertions or fabricate a passing result. Source changes still require a complete rebuild and CHECK_DEMO. No final PowerPoint, speaker notes or video may be changed in this phase.
+
+---
+
+# Current visual and functional revision, 14 October 2026
+
+All user requirements remain active, including the final visual revision and the complete scientific assessment workflow. Current app build: `d493f82c1a12`. Launch `START_DEMO.bat`; the primary jury path is `START_JURY_PRESENTATION.bat`. Final delivery: `outputs/presentations_visual_v2_20261014/`, with `SUNDAY_3_MINUTES_FINAL_VERIFIED.pptx`, `SUNDAY_5_MINUTES_FINAL_VERIFIED.pptx`, `FRIDAY_INVITATION.pptx` and an offline HTML presentation that plays continuous real video inside the page. Earlier delivery folders remain historical.
+
+`src/parametric_assessment.py` builds geographic ray/scenario inputs; `src/parametric.js` calculates browser scenarios; `src/assessment.js` integrates selection, evidence, assumptions and a three-page offline report. Changing the source requires REBUILD_DEMO and CHECK_DEMO. Selected group 1 differs from the whole pilot: baseline within-habitat height/energy reduction is 8.56%/16.03% for group 1 versus 5.85%/11.09% for the whole pilot. These are conditional model outputs, not observed protection. Candidate shoreline length is computed geometrically, not an assumed protected frontage. Economic cost share is an independent scenario assumption, never the wave-energy reduction used as a causal cost-saving factor. Avoided damage and ecosystem-service value remain null, not zero.
+
+The Cork comparison includes the corrected historical Laminaria evidence at Cape Clear. All 11 sampled incoming straight paths there cross land. No screened site establishes a validated habitat-wave-asset benefit chain. Present-day kelp, measured decline and calibrated restoration efficacy remain unconfirmed. Do not reinstate the old blanket zero or silently pass the failed external habitat test.
+
+Windows PowerPoint 16 opens/renders all final slides. Its native movie probe did not advance despite correct embedded bytes and manual Play. Labelled native frame animations were rendered and the actual slideshow advanced through the film scene into the final scene. The primary HTML path passed complete real-time offline 180.2/300.2-second rehearsals. Speaker pace still requires a human rehearsal. Sources, limitations and a requirement crosswalk accompany the delivery. `weekend_update.py` now compares against this revision's pre-event source baseline, not the superseded preparation baseline.
+
+## Earlier guidance update, retained for provenance
+
+The final user-approved direction is `CODEX_FINAL_OCEANHACKATHON_STORY_UX_PITCH_IMPLEMENTATION.md`, dated 14 October. It supersedes prior instructions. The application now has four journeys, three distinct Irish context roles, an offline guided tour and a selected-area screening brief. `src/story_evidence.py` provides whitelisted context without changing the physical model. Source assets and their licences are in `src/assets/story/credits.json`. Use the existing launchers. Final media is under `outputs/presentations_final_20261014/`; current test evidence is under `outputs/final_20261014/`.
+
+The 30- and 55-second MP4s are actual browser recordings. Embedded video playback failed in this installed PowerPoint despite H.264/AAC and WMV compatibility attempts. The delivered native presentation uses explicitly labelled, timed frames from the real recordings as its default fallback; continuous films play in the offline HTML companion. Do not claim native movie playback passed. Preserve the scientific boundaries below and record actual weekend contributions only after they happen.
+
+## Previous delivery context
+
+The user-provided `docs/overnight_20261013/MASTER_BRIEF.md` replaces older master instructions. The text below is retained as historical provenance, not as authority to preserve disproved results. In particular, the old blanket coastal EUR 0 conclusion is withdrawn: actual avoided damage is NOT QUANTIFIED. EPA macroalgae status cannot establish no kelp decline. Model validation has not passed. The NPWS SSCO comparison requires restoration classes to be treated as survey/revisit priorities. Source calculations and the current UI are built with `REBUILD_DEMO.bat`; do not apply old HTML patch scripts. Original raw data and old research outputs remain intact.
+
+The current application uses `src/evidence_pipeline.py` and `src/coastal_physics.py`. For changes and tests see `docs/overnight_20261013/COMPLETION_REPORT.md`. Current launch method: `START_DEMO.bat`.
+
+---
+
+# Historical guidance below
+
 # CLAUDE.md — OCEANHACKATHON
 
 This file is the authoritative brief. It intentionally restates everything a

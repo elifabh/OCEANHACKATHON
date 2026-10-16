@@ -1,0 +1,41 @@
+INVISIBLE SHIELD — IMPLEMENTED PRODUCT / EVIDENCE MATRIX
+Main case: Cape Clear / South Harbour. Supporting cases: Sherkin, Copper Point, Bantry.
+No presentation, speaker-note or video changes are part of this delivery.
+
+SEVEN PUBLISHED PROMISES
+Promise | Working feature | Detailed report | Verification
+1 Habitat map | Local clickable NPWS/reference, dated occurrence and assumed-cell layers; Sherkin satellite intertidal layer stays separate. Cape imagery availability and missing classification are explicit. | Section 2 + map in section 1 | Offline browser map clicks, all seven layer toggles, case switching; Cape input/provenance unit tests.
+2 Condition and decline risk | Separate component tables, actual annual offshore Hs P95, dated evidence/year filter, explicit missing canopy/temperature/continuity measurements. No copied score or inferred decline. | Sections 3 and 4 | Browser history/condition/risk/satellite tabs; local evidence isolation tests.
+3 Coastal protection | 36 directional central-ray geometries; depth/coefficient/method controls; with/without habitat; pinned A/B; open/land-blocked incoming path; shoreline and candidate asset inspection. | Sections 5 and 6 | 864 numerical cases independently checked against Python geometry/kernel; browser domain and directional tests.
+4 Transparent euros | Independent frontage, rate multiplier, budget share, discount and life controls; low/pooled/high capital and annual equivalent. Avoided damage and service value stay null. | Section 7 | Four budget-share presets; bounds, zero discount, wave/cost independence and report state tests.
+5 Biodiversity | Actual spatial OBIS inventory with taxonomic groups, records, provider/date/quality flags, class/search/ON_LAND filters, map links and JSON export. No effort-standardised bed score. | Section 8, full inventory embedded in JSON | Independent spatial record count (154 in Cape rectangle); browser filtering and downloaded-record verification.
+6 Indicative restoration | Filterable, case-specific research/eligibility actions with reasons and proposed ecology/GIS/engineering/economics owners. Failed legacy FPR retained. No restoration approval inferred. | Section 9 | Four action filters and report section checks.
+7 Clickable integrated assessment | Six-stage fixed-map workspace, case/feature selection, all outputs attached to current state; source inspection; offline HTML/JSON report and Print/Save PDF. | Sections 1 and 10, with complete state JSON | Actual map selection, downloads, all four case reports, 12-section round trip, projector/mobile/offline tests.
+
+SIX JURY CRITERIA
+Criterion | Concrete evidence | Claim boundary
+Working demonstrator | START_DEMO.bat; all six stages, current-state report and interactive comparisons. | Functional tests do not establish ecological accuracy.
+Digital data | Saved NPWS, OBIS, CMEMS, INFOMAR and OSM geometries/time series; build checksums and source register. | Dates, flags, shared lineage and scale limits are retained.
+Ambition | Habitat-to-wave-to-shore-to-asset assessment with transparent cost scenarios and transfer-ready case objects. | Missing shoreline hazard and damage stages are visible, not invented.
+Environmental / societal impact | Habitat-monitoring/restoration gates and actual South Harbour road/seawall context. | No measured restoration benefit, protected building or avoided euro claim.
+Innovation | Direction-aware screening, evidence conflicts, spatially local biodiversity and independent economics in one inspectable tool. | This is a practical integration, not a claim of novel validated physics.
+Team cohesion / communication | Downloadable evidence/state/report contracts, concise source lineage and named discipline owners for next actions. | Proposed roles and AI-assisted preparation; software does not prove actual team performance.
+
+ACTUAL TEST EVIDENCE
+outputs/product_cape_clear_20261015/qa/test_report.json: complete CHECK_DEMO result.
+qa/workspace-tests.json: 14 browser interaction groups, zero external requests and JavaScript errors.
+qa/report-tests.json: 5 report/download/round-trip groups, real baseline and modified PDFs.
+qa/numerical_tests.log: full regression suite including 864 Cape scenario combinations.
+preservation_result.json: SHA-256 check of original data/research/frozen tests/final media.
+qa/desktop-*, projector-*, mobile-* screenshots and report-page-* PDF renders.
+These files, not this descriptive matrix alone, establish the final pass/fail state.
+
+REPRODUCTION AND PRESERVATION
+1. Run REBUILD_DEMO.bat --no-pause using the existing Python environment.
+2. Run CHECK_DEMO.bat --no-pause under normal Windows permissions.
+3. Launch START_DEMO.bat, or open outputs/map/index.html offline.
+4. In stage 6 generate a report of the current settings; download HTML/JSON or Print/Save PDF.
+The prior working web app is archived in previous_working_app.zip. Raw imagery, sonar/bathymetry downloads, research, frozen tests and final media were not duplicated or altered. New compact derived views reuse those inputs. The rebuild audit now writes to the new product folder, not the historical overnight research folder.
+
+SCIENTIFIC NEXT STEP
+Confirm contemporary species, canopy extent/structure and bathymetric datum at the Cape origin. Validate habitat-to-shore wave transformation with local observations before estimating receptor hazard. Then obtain event probabilities, asset exposure, damage curves and lifecycle costs before any avoided-damage calculation. Unavailable 2019 Copper Point raw sonar/navigation/video remains supporting evidence only and does not block this conditional demonstration.
